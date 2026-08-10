@@ -171,7 +171,7 @@ service with only a name and URL is a complete, valid record.*
 - **Tags** and **Description**.
 - **Health URL** — where the checker should look, if that differs from the
   launch URL. It is a complete URL, not a base: your browser may need
-  `https://name.lab.local` while the worker needs `http://192.168.0.101:3000`.
+  `https://name.lab.local` while the worker needs `http://192.168.50.101:3000`.
   A `tcp://host:port` value switches that service to a plain TCP port check.
 - **Health checks** — a checkbox. Off means the service still lists and
   launches; it just shows no status.
