@@ -1,0 +1,11 @@
+Django>=6.0,<6.1
+django-ninja>=1.6,<2.0
+django-environ>=0.12
+whitenoise>=6.9
+httpx>=0.28
+# The database driver. PostgreSQL is the only supported backend (v1 §2a), in
+# development as well as production.
+psycopg[binary]>=3.2
+# The production WSGI server. Listed here rather than installed ad hoc in the
+# Dockerfile so it rides the same lock as everything else (audit S14).
+gunicorn>=23,<24

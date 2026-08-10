@@ -1,0 +1,138 @@
+# CI — the five documented release gates (backend suite, frontend suite,
+# `manage.py check`, `makemigrations --check`, `npm run build`), the repeated
+# backend run §12 requires, dependency audits, a full-history secret scan and a
+# container build smoke (audit S15). Mark backend/frontend/secrets/container as
+# required checks on the default branch — the workflow can only run, not require
+# itself.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Explicit and least-privilege: the repo's default workflow token is
+# restricted, and an undeclared block means whatever that default is today.
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend suite ×2 + Django checks
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: homelabvault
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # The suite needs a role with CREATEDB (pytest-django creates
+      # test_<dbname>); the service superuser has it.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/homelabvault
+      SECRET_KEY: ci-only-not-a-secret
+      HOMELABVAULT_ADMIN_TOKEN: ci-admin-token
+      HOMELABVAULT_AGENT_TOKEN: ci-agent-token
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: pip install -r backend/requirements-dev.txt
+      - run: python manage.py check
+        working-directory: backend
+      - run: python manage.py makemigrations --check --dry-run
+        working-directory: backend
+      # Twice, back to back (§12): order- and state-dependent failures show up
+      # on the second run, not the first.
+      - run: python -m pytest
+        working-directory: backend
+      - run: python -m pytest
+        working-directory: backend
+
+  frontend:
+    name: Frontend suite + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm test
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+
+  audit:
+    name: Dependency audits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      # Full audit, dev dependencies included — on a public repo the toolchain
+      # is what every contributor runs (audit S16). High and above fails.
+      - run: npm audit --audit-level=high
+        working-directory: frontend
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # The lock pins the full transitive set, so --no-deps audits everything
+      # the image would actually install.
+      - run: pip install pip-audit
+      - run: pip-audit --no-deps -r backend/requirements.lock
+
+  secrets:
+    name: Secret scan (full history)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # On a pull_request event the action lists the PR's commits to pick its
+      # scan range — without this the API answers 403 "Resource not accessible
+      # by integration" before any scanning happens (first-push finding).
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The scan is only meaningful over history — B1 was seventeen private
+          # files reachable from a root commit, invisible to a HEAD-only scan.
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A found leak fails the job — that is the signal. PR comments would
+          # need write permission only to decorate that failure.
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
+  container:
+    name: Container build + compose smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Proves the reproducible-build contract (S14): digest-pinned bases,
+      # npm ci against a mandatory lockfile, pip --require-hashes from the lock.
+      - run: docker build .
+      # The compose file must validate with only the three required values set.
+      - run: |
+          printf 'SECRET_KEY=x\nPOSTGRES_PASSWORD=x\nHOMELABVAULT_ADMIN_TOKEN=x\n' > .env
+          docker compose config --quiet

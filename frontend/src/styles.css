@@ -1,0 +1,1108 @@
+/* Design tokens — the single source of truth for colour and spacing.
+   Never hardcode a hex value in a component; add a variable here instead. */
+
+/* No webfont import. The mockup uses Manrope + JetBrains Mono, but this tool
+   exists to still work when the network is degraded, and it runs on a tailnet
+   where a call out to a font CDN is both a privacy leak and a render stall.
+   The stacks below fall back to the system UI and mono faces, which is a very
+   close visual match. Drop the .woff2 files into src/assets and add @font-face
+   here if the exact faces are wanted. */
+
+body {
+  margin: 0;
+  font-family: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: #e9e9ee;
+  color: var(--txt);
+
+  --bg: #f4f4f7;
+  --panel: #fff;
+  --panel2: #fafafc;
+  --line: #e9e9ef;
+  --line2: #f0f0f5;
+  --hover: #f6f6fa;
+  --chip: #ececf3;
+  --txt: #20202a;
+  /* Darkened alongside the dark theme's lift, so secondary text sits at a
+     comparable distance from primary in both. 7.20:1 on --chip, which is the
+     worst-case surface and the one the prose floor is measured against. */
+  --txt2: #4c4c58;
+  /* Was #8f8f9c, which measured 2.72:1 on --chip and 3.19:1 on --panel — below
+     the 4.5:1 WCAG AA floor for body text on every surface it is used on. This
+     value clears 4.6:1 at worst. Raised 2026-08-07 after the V1.5 validation
+     pass reported the Add Service form unreadable; measured, not eyeballed.
+     If you change it, re-measure against --chip, which is the worst case. */
+  --txt3: #696976;
+  --accent: #5b48e0;
+  --accentSoft: rgba(111, 93, 240, 0.09);
+  --accentLine: rgba(111, 93, 240, 0.22);
+  /* Foreground on an accent or gradient surface. Deliberately the same in both
+     themes — the accent is dark enough for white in each — so it is defined
+     once here and inherited by body.dark; a palette change overrides it there
+     if the new accent needs it. Before this token existed, seven rules
+     hardcoded #fff against this file's own header rule (audit informational)
+     and were invisible to any palette change. */
+  --onAccent: #fff;
+  --grad: linear-gradient(135deg, #8b7cf7, #6f5df0);
+  --gradShadow: 0 6px 18px rgba(111, 93, 240, 0.3);
+  --ok: #2f9e6b;
+  --okSoft: rgba(47, 158, 107, 0.1);
+  --warn: #a8741c;
+  --warnSoft: rgba(196, 138, 44, 0.13);
+  --err: #c74a5b;
+  --errSoft: rgba(199, 74, 91, 0.1);
+  --shadow: 0 6px 18px rgba(30, 30, 60, 0.04);
+  --tint: radial-gradient(900px 420px at 15% -5%, rgba(124, 108, 247, 0.08), transparent 60%);
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  /* Recessed surface for configuration this screen shows but does not own —
+     the visual half of §6a's "what lives where". */
+  --ro: #f1f1f6;
+  --roLine: #e4e4ec;
+}
+
+body.dark {
+  background: #141416;
+  --bg: #1a1a1c;
+  --panel: #232327;
+  --panel2: #1e1e21;
+  --line: #33333a;
+  --line2: #2b2b31;
+  --hover: #2a2a30;
+  --chip: #2e2e35;
+  --txt: #e8e8ea;
+  /* Raised from #a6a6ae (6.48:1) to 9.03:1 on --panel — the third pass at the
+     Add Service form's legibility. 1.42x below --txt, which is still enough
+     hierarchy that a hint does not read as a value. Contrast was only one of
+     three levers; see `.field-hint` for the other two. */
+  --txt2: #c4c4cc;
+  /* Was #77777e — 3.03:1 on --chip, 3.52:1 on --panel, failing AA everywhere.
+     This clears 4.5:1 at worst. Same measurement rule as the light theme above:
+     --chip is the worst case, check against it. */
+  --txt3: #95959c;
+  --accent: #9d90f9;
+  --accentSoft: rgba(139, 124, 247, 0.16);
+  --accentLine: rgba(139, 124, 247, 0.34);
+  --grad: linear-gradient(135deg, #9d90f9, #7a68f2);
+  --gradShadow: 0 6px 18px rgba(90, 72, 220, 0.4);
+  --ok: #5cc493;
+  --okSoft: rgba(92, 196, 147, 0.15);
+  --warn: #d9a441;
+  --warnSoft: rgba(217, 164, 65, 0.16);
+  --err: #e2707f;
+  --errSoft: rgba(226, 112, 127, 0.15);
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  --tint: radial-gradient(900px 420px at 15% -5%, rgba(139, 124, 247, 0.09), transparent 60%);
+  --ro: #1e1e21;
+  --roLine: #2f2f36;
+}
+
+* { box-sizing: border-box; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+input, textarea, button { font-family: inherit; color: inherit; }
+input:focus, textarea:focus { outline: none; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 9px; }
+
+/* --- shell --------------------------------------------------------------- */
+/* `height`, not `min-height`. With min-height the shell is free to grow taller
+   than the viewport, so `.content`'s `overflow: auto` below never engages and
+   the document scrolls instead — which meant the sidebar and topbar scrolled
+   away, and any bottom-anchored element inside a screen rode down with the
+   page. Fixing the height is what activates the app-shell scrolling the rest of
+   this file already assumes. */
+.app { display: flex; height: 100vh; background: var(--tint), var(--bg); color: var(--txt); }
+
+.sidebar {
+  width: 236px; flex: none; background: var(--panel);
+  border-right: 1px solid var(--line); display: flex; flex-direction: column;
+  /* The shell is now viewport-height, so a long category list has to scroll
+     here rather than clip. */
+  overflow-y: auto;
+}
+.brand {
+  display: flex; align-items: center; gap: 10px; padding: 20px 20px 16px;
+  background: none; border: 0; cursor: pointer; width: 100%; text-align: left;
+  color: inherit;
+}
+.brand:hover .brand-name { color: var(--accent); }
+.brand-mark {
+  width: 28px; height: 28px; border-radius: 9px; background: var(--grad);
+  color: var(--onAccent); font: 800 14px/28px 'Manrope', sans-serif; text-align: center;
+}
+.brand-name { font: 800 15px 'Manrope', sans-serif; }
+/* Groups are separated by real space, not by a rule — the rule between the nav
+   and this list was tried and dropped as noise. */
+.side-group { padding: 0 12px 0; margin-bottom: 18px; }
+.side-group:last-of-type { margin-bottom: 8px; }
+/* A section header, and it has to out-rank its own children.
+   It previously did the opposite: 10.5px in `--txt3` above 13px items in
+   `--txt2` — smaller AND dimmer than the things it was meant to be the parent
+   of, so the whole sidebar read as one flat list. Bolder, a touch larger, and
+   promoted to `--txt2`; the uppercase and the tracking are what still say
+   "label" rather than "row". */
+.side-head {
+  display: flex; align-items: center; padding: 6px 10px 9px;
+  font: 800 11px 'Manrope', sans-serif; text-transform: uppercase;
+  letter-spacing: 0.09em; color: var(--txt2);
+}
+.side-item {
+  display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+  border-radius: 10px; cursor: pointer; background: transparent; border: 0;
+  width: 100%; text-align: left;
+}
+/* Indented, so the children sit visibly *under* their header. The hover block
+   is indented with them rather than spanning the full width, which is what makes
+   the nesting read at a glance. Only inside a `.side-group` — the nav buttons and
+   the Settings row at the foot are top-level and stay flush. */
+.side-group .side-item { width: calc(100% - 10px); margin-left: 10px; }
+.side-item:hover { background: var(--hover); }
+.side-item.active { background: var(--accentSoft); }
+.side-item-label {
+  font: 600 13px 'Manrope', sans-serif; color: var(--txt2); flex: 1;
+  min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.side-item.active .side-item-label { font-weight: 700; color: var(--accent); }
+.side-count { font: 600 11px var(--mono); color: var(--txt3); }
+/* Edit affordances stay out of the way until the row is hovered — the primary
+   action on a category is filtering by it, not renaming it. */
+.side-edit, .tag-edit {
+  background: none; border: 0; cursor: pointer; padding: 0 4px;
+  color: var(--txt3); font-size: 11px; opacity: 0; transition: opacity .12s;
+}
+.side-item:hover .side-edit, .tag-chip-wrap:hover .tag-edit { opacity: 1; }
+.side-edit:hover, .tag-edit:hover { color: var(--accent); }
+.side-edit:focus-visible, .tag-edit:focus-visible { opacity: 1; }
+.tag-chip-wrap {
+  display: inline-flex; align-items: center; border-radius: 6px;
+  background: var(--chip);
+}
+.tag-chip-wrap .tag-chip { background: none; }
+.side-empty {
+  margin: 12px; border: 1px dashed var(--line); border-radius: 12px; padding: 16px 14px;
+}
+.side-empty-title { font: 700 12px 'Manrope', sans-serif; color: var(--txt2); }
+.side-empty-body { font: 500 11.5px/1.55 'Manrope', sans-serif; color: var(--txt3); margin-top: 5px; }
+.worker-status {
+  margin-top: auto; border-top: 1px solid var(--line); padding: 14px 18px;
+  display: flex; align-items: center; gap: 10px;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.worker-text { font: 600 11.5px 'Manrope', sans-serif; color: var(--txt2); }
+
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.topbar {
+  display: flex; align-items: center; gap: 14px; padding: 0 26px; height: 62px;
+  flex: none; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+.palette-trigger {
+  flex: 1; max-width: 460px; display: flex; align-items: center; gap: 10px;
+  height: 38px; padding: 0 16px; border: 1px solid var(--line);
+  border-radius: 999px; background: var(--panel2); cursor: pointer;
+}
+.palette-trigger:hover { border-color: var(--accentLine); }
+.palette-trigger-label { flex: 1; font: 500 12.5px 'Manrope', sans-serif; color: var(--txt3); text-align: left; }
+.kbd {
+  font: 600 10.5px var(--mono); color: var(--txt3);
+  border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px;
+}
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.seg { display: flex; gap: 3px; padding: 3px; border-radius: 999px; background: var(--chip); }
+.seg button {
+  padding: 6px 14px; border-radius: 999px; border: 0; background: transparent;
+  color: var(--txt2); font: 700 11.5px 'Manrope', sans-serif; cursor: pointer;
+}
+.seg button.on { background: var(--panel); color: var(--txt); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.link-btn {
+  background: none; border: 0; cursor: pointer;
+  font: 600 12px 'Manrope', sans-serif; color: var(--txt2);
+}
+.link-btn:hover { color: var(--accent); }
+
+.content { flex: 1; overflow: auto; padding: 24px 26px 34px; }
+.page-head { display: flex; align-items: flex-end; gap: 16px; }
+.page-title { font: 800 25px 'Manrope', sans-serif; letter-spacing: -0.02em; }
+.counts {
+  display: flex; align-items: center; gap: 9px; margin-top: 6px;
+  font: 600 12.5px 'Manrope', sans-serif; color: var(--txt2); flex-wrap: wrap;
+}
+.counts .sep { color: var(--txt3); }
+.count-filter {
+  background: none; border: 1px solid transparent; padding: 2px 8px;
+  border-radius: 999px; cursor: pointer; font: inherit;
+}
+.count-filter:hover { border-color: var(--line); background: var(--hover); }
+.count-filter.on { border-color: currentColor; background: var(--accentSoft); }
+.clear-btn {
+  background: none; border: 0; cursor: pointer; flex: none;
+  color: var(--txt3); font: 700 12px 'Manrope', sans-serif; padding: 4px 6px;
+  border-radius: 999px;
+}
+.clear-btn:hover { color: var(--err); background: var(--errSoft); }
+
+.btn-primary {
+  height: 38px; padding: 0 20px; border-radius: 999px; border: 0;
+  background: var(--grad); box-shadow: var(--gradShadow); color: var(--onAccent);
+  font: 700 12.5px 'Manrope', sans-serif; cursor: pointer;
+}
+.btn-ghost {
+  padding: 9px 18px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--txt2);
+  font: 700 12px 'Manrope', sans-serif; cursor: pointer;
+}
+.btn-ghost:hover { border-color: var(--accentLine); color: var(--accent); }
+.btn-danger { border-color: var(--errSoft); color: var(--err); }
+
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: var(--shadow); margin-top: 18px;
+}
+
+/* --- search bar ---------------------------------------------------------- */
+.searchbar { padding: 14px 18px; }
+.search-input-row {
+  display: flex; align-items: center; gap: 10px; height: 42px;
+  padding: 0 8px 0 16px; border: 1px solid var(--accentLine);
+  border-radius: 999px; background: var(--panel2);
+}
+.search-input-row input {
+  flex: 1; min-width: 80px; height: 40px; border: none; background: transparent;
+  font: 600 13px var(--mono);
+}
+.search-glyph { font: 700 13px 'Manrope', sans-serif; color: var(--accent); }
+.result-count { font: 600 11.5px 'Manrope', sans-serif; color: var(--txt3); flex: none; }
+.chip-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.chip-label {
+  font: 700 10.5px 'Manrope', sans-serif; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--txt3); margin-right: 2px;
+}
+.view-chip {
+  display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+  border-radius: 999px; background: var(--panel2); border: 1px solid var(--line);
+  cursor: pointer; font: 700 11.5px 'Manrope', sans-serif; color: var(--txt2);
+}
+.view-chip.on { background: var(--accentSoft); border-color: var(--accentLine); color: var(--accent); }
+.tag-chip {
+  padding: 5px 11px; border-radius: 6px; background: var(--chip); border: 0;
+  font: 600 11px var(--mono); color: var(--txt2); cursor: pointer;
+}
+.tag-chip:hover { color: var(--accent); }
+.syntax-grid {
+  margin-top: 12px; border-top: 1px solid var(--line2); padding-top: 14px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 20px;
+}
+.syntax-item { display: flex; align-items: baseline; gap: 10px; cursor: pointer; background: none; border: 0; text-align: left; }
+.syntax-key { font: 700 11.5px var(--mono); color: var(--accent); flex: none; }
+.syntax-desc { font: 500 11.5px 'Manrope', sans-serif; color: var(--txt2); }
+
+/* --- catalog table ------------------------------------------------------- */
+.table { margin-top: 16px; overflow: hidden; }
+.row {
+  display: grid; grid-template-columns: 30px 1.5fr 0.85fr 0.9fr 1.05fr 1.1fr 126px;
+  gap: 14px; align-items: center; padding: 12px 22px;
+  border-bottom: 1px solid var(--line2);
+}
+.row.head { padding: 13px 22px; }
+.row.body { cursor: pointer; background: none; border-left: 0; border-right: 0; border-top: 0; width: 100%; text-align: left; }
+.row.body:hover { background: var(--hover); }
+.col-head {
+  font: 700 10.5px 'Manrope', sans-serif; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--txt3);
+}
+.col-head.right { text-align: right; }
+.checkbox {
+  width: 18px; height: 18px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--onAccent); font: 800 10px/16px 'Manrope', sans-serif;
+  text-align: center; cursor: pointer; padding: 0;
+}
+.checkbox.on { background: var(--accent); border-color: var(--accent); }
+.svc { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.svc-icon {
+  width: 32px; height: 32px; border-radius: 10px; background: var(--accentSoft);
+  color: var(--accent); font: 800 11px/32px 'Manrope', sans-serif;
+  text-align: center; flex: none; overflow: hidden;
+}
+.svc-icon img { width: 100%; height: 100%; object-fit: contain; display: block; }
+/* The two stacked lines had no margin between them and were separated only by
+   whatever `line-height: normal` happened to give — so a 13.5px name and an 11px
+   category sat almost touching. Explicit line-heights plus a small gap. */
+.svc-name {
+  font: 700 13.5px/1.35 'Manrope', sans-serif; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+/* Category, now its own column. A chip rather than plain text, so it reads as
+   the filter it is — the same affordance the Tags column already had. */
+.cat-cell { min-width: 0; }
+.cat-chip {
+  max-width: 100%; padding: 3px 9px; border-radius: 6px; background: var(--chip);
+  border: 0; cursor: pointer;
+  font: 600 11.5px 'Manrope', sans-serif; color: var(--txt2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cat-chip:hover { color: var(--accent); }
+.cat-empty { font: 500 12px 'Manrope', sans-serif; color: var(--txt3); }
+.host { font: 500 12px var(--mono); color: var(--txt2); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Comfortable density (BACKLOG.5, `ui.catalog.density`): the same Layout 2B
+   table with bigger rows, icons and type. Overrides only — compact stays the
+   untouched default, so existing installs look identical after the upgrade. */
+.table.density-comfortable .row { padding: 17px 22px; }
+.table.density-comfortable .svc-icon {
+  width: 42px; height: 42px; border-radius: 12px;
+  font: 800 13px/42px 'Manrope', sans-serif;
+}
+.table.density-comfortable .svc-name { font-size: 15.5px; }
+.table.density-comfortable .cat-chip { font-size: 12.5px; padding: 4px 11px; }
+.table.density-comfortable .cat-empty { font-size: 13px; }
+.table.density-comfortable .host { font-size: 13px; }
+.table.density-comfortable .tag { font-size: 11.5px; padding: 4px 10px; }
+.tags { display: flex; gap: 5px; min-width: 0; overflow: hidden; }
+.tag {
+  padding: 3px 9px; border-radius: 6px; background: var(--chip); border: 0;
+  font: 600 10.5px var(--mono); color: var(--txt2); white-space: nowrap; cursor: pointer;
+}
+.tag:hover { color: var(--accent); }
+.launch { justify-self: end; display: flex; align-items: center; gap: 6px; }
+.launch-btn {
+  padding: 6px 15px; border-radius: 999px; border: 0; background: var(--accentSoft);
+  color: var(--accent); font: 700 11.5px 'Manrope', sans-serif;
+  white-space: nowrap; cursor: pointer;
+}
+.table-foot { display: flex; align-items: center; padding: 13px 22px; }
+.table-foot span { font: 600 11.5px 'Manrope', sans-serif; color: var(--txt3); }
+
+/* --- status pill --------------------------------------------------------- */
+.pill {
+  display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px;
+  border-radius: 999px; border: 1px solid transparent;
+}
+.pill-dot { width: 8px; height: 8px; border-radius: 50%; box-sizing: border-box; border-width: 2px; border-style: solid; }
+.pill-label { font: 800 11px 'Manrope', sans-serif; }
+.pill-note { font: 500 10.5px 'Manrope', sans-serif; color: var(--txt3); margin-top: 3px; }
+.st-up    { background: var(--okSoft);   border-color: var(--okSoft); }
+.st-up    .pill-label, .st-up .pill-dot   { color: var(--ok);   border-color: var(--ok); }
+.st-down  { background: var(--errSoft);  border-color: var(--errSoft); }
+.st-down  .pill-label, .st-down .pill-dot { color: var(--err);  border-color: var(--err); }
+/* stale must read as "the worker stopped", visually distinct from down (§8) */
+.st-stale { background: var(--warnSoft); border-color: var(--warnSoft); }
+.st-stale .pill-label, .st-stale .pill-dot { color: var(--warn); border-color: var(--warn); }
+.st-stale .pill-dot { background: transparent; }
+.st-unknown, .st-off { background: var(--chip); border-color: var(--line); }
+.st-unknown .pill-label, .st-unknown .pill-dot,
+.st-off .pill-label, .st-off .pill-dot { color: var(--txt3); border-color: var(--txt3); }
+.st-up .pill-dot, .st-down .pill-dot { background: currentColor; }
+.status-cell { position: relative; min-width: 0; cursor: pointer; border-radius: 8px; }
+.status-cell:hover .pill { filter: brightness(1.08); }
+.status-cell.busy { opacity: .6; }
+.status-spin {
+  position: absolute; right: 4px; top: 4px; font-size: 11px; color: var(--txt3);
+  animation: hlv-spin 1s linear infinite; display: inline-block;
+}
+@keyframes hlv-spin { to { transform: rotate(360deg); } }
+
+/* --- bulk selection bar -------------------------------------------------- */
+.bulkbar {
+  display: flex; align-items: center; gap: 12px; margin-top: 14px;
+  padding: 12px 18px; border-radius: 14px; background: var(--accentSoft);
+  border: 1px solid var(--accentLine);
+}
+.bulkbar-label { font: 800 12.5px 'Manrope', sans-serif; color: var(--accent); }
+
+/* --- empty state --------------------------------------------------------- */
+.empty-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 60px 26px; }
+.empty { width: 640px; text-align: center; }
+.empty-mark {
+  width: 56px; height: 56px; border-radius: 18px; background: var(--grad);
+  color: var(--onAccent); font: 800 24px/56px 'Manrope', sans-serif; margin: 0 auto 18px;
+}
+.empty h1 { font: 800 22px 'Manrope', sans-serif; margin: 0 0 8px; }
+.empty p { font: 500 13px/1.6 'Manrope', sans-serif; color: var(--txt2); margin: 0 auto 20px; max-width: 460px; }
+.empty-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 26px; text-align: left; }
+.empty-step { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--panel); }
+.empty-step-n { font: 700 10.5px var(--mono); color: var(--accent); }
+.empty-step-t { font: 700 12.5px 'Manrope', sans-serif; margin-top: 6px; }
+.empty-step-d { font: 500 11.5px/1.5 'Manrope', sans-serif; color: var(--txt2); margin-top: 4px; }
+
+/* --- modal --------------------------------------------------------------- */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(20, 20, 35, 0.45);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 80px 20px; z-index: 100;
+}
+.modal {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(20, 20, 45, 0.28); width: 100%; max-width: 560px;
+  max-height: calc(100vh - 160px); display: flex; flex-direction: column;
+}
+.modal.wide { max-width: 720px; }
+.modal-head {
+  display: flex; align-items: center; gap: 12px; padding: 18px 22px;
+  border-bottom: 1px solid var(--line2);
+}
+.modal-title { font: 800 15px 'Manrope', sans-serif; flex: 1; }
+.modal-close { background: none; border: 0; font: 700 16px 'Manrope', sans-serif; color: var(--txt3); cursor: pointer; }
+.modal-body { padding: 20px 22px; overflow: auto; }
+.modal-foot {
+  display: flex; align-items: center; gap: 10px; padding: 16px 22px;
+  border-top: 1px solid var(--line2);
+}
+.modal-foot .spacer { margin-left: auto; }
+
+.field { margin-bottom: 16px; }
+/* `--txt2`, not `--txt3`. These are 10.5px, bold, uppercase and tracked at
+   0.08em — WCAG's 4.5:1 floor is calibrated for ~16px body text, so clearing it
+   is not the same as being readable at this size. A field label is structural:
+   it is how you find the field you want, so it gets the secondary text colour
+   rather than the de-emphasis one. Raised 2026-08-07 after the token fix alone
+   left the Add Service form hard to read in dark mode. */
+.field-label {
+  font: 700 10.5px 'Manrope', sans-serif; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--txt2); display: block; margin-bottom: 6px;
+}
+.field input, .field textarea, .field select {
+  width: 100%; padding: 10px 14px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--panel2);
+  font: 500 13px 'Manrope', sans-serif;
+}
+.field input.mono, .field textarea { font-family: var(--mono); font-size: 12.5px; }
+.field input:focus, .field textarea:focus { border-color: var(--accentLine); }
+.field input.needs-value { border-color: var(--warn); background: var(--warnSoft); }
+/* Hints carry the longest prose on the form, so they get all three legibility
+   levers, not just colour:
+     1. `--txt2`, now 9:1 in dark.
+     2. **12px, up from 11px.** Contrast cannot rescue text that is simply too
+        small; at 11px it was below what this app uses anywhere else for prose.
+     3. `line-height: 1.5`, because these run to two lines and were set solid.
+   The third lever is not here at all — it is the *word count*. The Add Service
+   form carried 133 words of grey supporting text, and making that much text
+   brighter makes a form louder rather than clearer. Some of it was cut; the rest
+   belongs in the user guide, not beside the field. */
+.field-hint {
+  font: 500 12px/1.5 'Manrope', sans-serif; color: var(--txt2); margin-top: 5px;
+}
+
+/* Placeholders were never styled at all, so they took the browser's default —
+   roughly 54% of the input's text colour, which lands near the AA floor in
+   Chrome and is not guaranteed anywhere else. Setting it explicitly takes the
+   most-easily-missed text on the form out of the browser's hands. */
+.field input::placeholder,
+.field textarea::placeholder,
+input::placeholder,
+textarea::placeholder {
+  color: var(--txt3);
+  opacity: 1; /* Firefox applies its own opacity to placeholders; undo it. */
+}
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.notice { padding: 10px 14px; border-radius: 10px; font: 600 12px 'Manrope', sans-serif; margin-bottom: 14px; }
+.notice.err { background: var(--errSoft); color: var(--err); }
+.notice.ok { background: var(--okSoft); color: var(--ok); }
+.notice.warn { background: var(--warnSoft); color: var(--warn); }
+
+.probe-rows { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
+.probe-row {
+  display: flex; align-items: center; gap: 12px; padding: 9px 14px;
+  border-bottom: 1px solid var(--line2); font: 500 12px 'Manrope', sans-serif;
+}
+.probe-row:last-child { border-bottom: 0; }
+/* Same small-uppercase-label pattern as `.field-label`, in the same form, so it
+   gets the same treatment — see the note there. */
+.probe-row .k { color: var(--txt2); width: 96px; flex: none; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+.probe-row .v { color: var(--txt2); font-family: var(--mono); font-size: 11.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- tag input ----------------------------------------------------------- */
+.tag-input {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  min-height: 40px; padding: 6px 10px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--panel2); cursor: text;
+}
+.tag-input:focus-within { border-color: var(--accentLine); }
+.tag-input input {
+  flex: 1; min-width: 120px; border: 0; background: transparent; padding: 4px 2px;
+  font: 500 12.5px 'Manrope', sans-serif;
+}
+.tag-token {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px 3px 10px;
+  border-radius: 999px; background: var(--accentSoft); color: var(--accent);
+  font: 700 11.5px var(--mono);
+}
+.tag-token-x {
+  background: none; border: 0; cursor: pointer; color: inherit;
+  opacity: .55; font-size: 10px; padding: 0 2px; line-height: 1;
+}
+.tag-token-x:hover { opacity: 1; }
+
+/* --- icon picker --------------------------------------------------------- */
+.icon-row { display: flex; align-items: center; gap: 10px; }
+.icon-row input { flex: 1; min-width: 0; }
+.icon-preview {
+  width: 38px; height: 38px; flex: none; border-radius: 10px;
+  background: var(--accentSoft); color: var(--accent); overflow: hidden;
+  font: 800 12px/38px 'Manrope', sans-serif; text-align: center;
+}
+.icon-preview img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+/* --- bulk import review -------------------------------------------------- */
+.bulk-review { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.bulk-head, .bulk-row {
+  display: grid; grid-template-columns: 1.3fr 1fr 1fr 28px; gap: 10px;
+  align-items: center; padding: 9px 12px; border-bottom: 1px solid var(--line2);
+}
+.bulk-head {
+  font: 700 10px 'Manrope', sans-serif; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--txt3); background: var(--panel2);
+}
+.bulk-row:last-child { border-bottom: 0; }
+.bulk-url {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  font: 500 11.5px var(--mono); color: var(--txt2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bulk-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.bulk-input {
+  width: 100%; padding: 6px 10px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--panel2);
+  font: 500 12px 'Manrope', sans-serif;
+}
+.bulk-input.mono { font-family: var(--mono); font-size: 11.5px; }
+.bulk-input.bad { border-color: var(--err); background: var(--errSoft); }
+.bulk-warn {
+  grid-column: 1 / -1; font: 600 10.5px 'Manrope', sans-serif;
+  color: var(--warn); padding-top: 2px;
+}
+
+/* --- command palette ----------------------------------------------------- */
+.palette { max-width: 560px; padding: 0; }
+.palette-input {
+  width: 100%; border: 0; border-bottom: 1px solid var(--line2);
+  padding: 18px 20px; background: transparent; font: 600 14px 'Manrope', sans-serif;
+}
+.palette-section {
+  font: 700 10px 'Manrope', sans-serif; text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--txt3); padding: 10px 20px 6px;
+}
+.palette-item {
+  display: flex; align-items: center; gap: 12px; padding: 9px 20px;
+  cursor: pointer; background: none; border: 0; width: 100%; text-align: left;
+}
+.palette-item.sel { background: var(--accentSoft); }
+.palette-name { font: 700 13px 'Manrope', sans-serif; flex: 1; min-width: 0; }
+.palette-meta { font: 500 11px var(--mono); color: var(--txt3); }
+.palette-foot {
+  display: flex; gap: 16px; padding: 12px 20px; border-top: 1px solid var(--line2);
+  font: 500 11px 'Manrope', sans-serif; color: var(--txt3);
+}
+
+/* --- record page --------------------------------------------------------- */
+.record-head { display: flex; align-items: center; gap: 14px; }
+.record-icon {
+  position: relative; width: 44px; height: 44px; border-radius: 14px;
+  background: var(--accentSoft); color: var(--accent);
+  font: 800 15px/44px 'Manrope', sans-serif; text-align: center; flex: none;
+  overflow: hidden; border: 0; padding: 0; cursor: pointer;
+}
+.record-icon img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.record-icon-hint {
+  position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: center; background: rgba(20, 20, 35, .6); color: var(--onAccent);
+  font-size: 14px; opacity: 0; transition: opacity .12s;
+}
+.record-icon:hover .record-icon-hint,
+.record-icon:focus-visible .record-icon-hint { opacity: 1; }
+.record-url { font: 500 12px var(--mono); color: var(--txt3); margin-top: 4px; }
+.meta-grid { display: grid; grid-template-columns: 150px 1fr; }
+.meta-k {
+  padding: 11px 22px; font: 700 10.5px 'Manrope', sans-serif;
+  text-transform: uppercase; letter-spacing: .08em; color: var(--txt3);
+  border-bottom: 1px solid var(--line2);
+}
+.meta-v {
+  padding: 11px 22px; font: 500 12.5px 'Manrope', sans-serif; color: var(--txt2);
+  border-bottom: 1px solid var(--line2); min-width: 0; overflow-wrap: anywhere;
+}
+.section-title { font: 800 15px 'Manrope', sans-serif; padding: 16px 22px 0; }
+
+.spinner { font: 600 12px 'Manrope', sans-serif; color: var(--txt3); }
+
+/* --- Settings screen (v1 §6a/§6c) -----------------------------------------
+   Editable rows sit on the panel surface with real controls; anything owned by
+   .env sits in a recessed block with no affordance. That contrast is the point:
+   it makes "what lives where" visible instead of documented. */
+
+.settings-card { padding: 0; margin-top: 16px; overflow: hidden; }
+.settings-card-head {
+  display: flex; align-items: center; gap: 11px;
+  padding: 15px 20px; border-bottom: 1px solid var(--line2);
+}
+.settings-card-title { font: 800 14.5px 'Manrope', sans-serif; }
+.settings-badge {
+  padding: 3px 10px; border-radius: 999px;
+  font: 700 9.5px var(--mono); letter-spacing: 0.06em; text-transform: uppercase;
+}
+.settings-badge.accent { background: var(--accentSoft); color: var(--accent); }
+.settings-badge.warn { background: var(--warnSoft); color: var(--warn); }
+.settings-badge.muted { background: var(--chip); color: var(--txt2); }
+.settings-aside {
+  margin-left: auto; text-align: right;
+  font: 500 11.5px 'Manrope', sans-serif; color: var(--txt3);
+}
+
+.settings-row {
+  display: flex; align-items: center; gap: 18px;
+  padding: 15px 20px; border-top: 1px solid var(--line2);
+}
+.settings-card-head + .settings-row { border-top: 0; }
+.settings-row.inert { opacity: 0.55; }
+.settings-row-main { flex: 1; min-width: 0; }
+.settings-row-label {
+  display: flex; align-items: center; gap: 9px;
+  font: 700 13px 'Manrope', sans-serif;
+}
+.settings-row-helper {
+  font: 500 11.5px/1.55 'Manrope', sans-serif; color: var(--txt3);
+  margin-top: 3px; max-width: 640px;
+}
+.settings-note {
+  font: 500 11.5px/1.6 'Manrope', sans-serif; color: var(--txt3);
+  margin-top: 8px; padding-left: 11px; border-left: 2px solid var(--roLine);
+  max-width: 640px;
+}
+.settings-changed {
+  font: 700 9.5px var(--mono); color: var(--accent);
+  background: var(--accentSoft); border-radius: 999px; padding: 2px 8px;
+}
+.settings-tag {
+  display: inline-flex; align-items: center;
+  border: 1px solid var(--roLine); background: var(--ro); border-radius: 999px;
+  padding: 2px 9px; white-space: nowrap;
+  font: 600 9.5px var(--mono); letter-spacing: 0.05em; color: var(--txt3);
+}
+
+.settings-toggle {
+  width: 42px; height: 24px; flex: none; padding: 3px;
+  border: 0; border-radius: 999px; background: var(--chip);
+  cursor: pointer; transition: background 0.16s;
+}
+.settings-toggle.on { background: var(--accent); }
+.settings-toggle:disabled { cursor: default; }
+.settings-knob {
+  display: block; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--onAccent); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+  margin-left: 0; transition: margin-left 0.16s;
+}
+.settings-toggle.on .settings-knob { margin-left: 18px; }
+.seg button:disabled { opacity: 0.45; cursor: default; }
+
+.settings-stepper {
+  display: flex; align-items: center; height: 36px; flex: none; overflow: hidden;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--panel2);
+}
+.settings-stepper-value {
+  width: 74px; text-align: right; padding-right: 9px;
+  font: 600 13px var(--mono);
+}
+/* Same box as the old read-only value, so the row does not shift — it is now
+   just editable. The native spin buttons are hidden because this control
+   already has its own arrows, and two sets side by side is nonsense. */
+.settings-stepper-input {
+  width: 74px; text-align: right; padding: 0 9px 0 4px;
+  border: 0; background: none; color: var(--txt);
+  font: 600 13px var(--mono); height: 100%; outline: none;
+  -moz-appearance: textfield;
+}
+.settings-stepper-input::-webkit-outer-spin-button,
+.settings-stepper-input::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+.settings-stepper-input:disabled { opacity: 0.45; cursor: default; }
+.settings-stepper:focus-within { border-color: var(--accentLine); }
+.settings-stepper-unit {
+  font: 500 11px 'Manrope', sans-serif; color: var(--txt3); padding-right: 9px;
+}
+.settings-stepper-buttons {
+  display: flex; flex-direction: column; height: 100%;
+  border-left: 1px solid var(--line);
+}
+/* Discord snowflake ID field (BACKLOG.1). Wide enough for 20 digits. */
+.settings-mention {
+  width: 200px; padding: 8px 11px; border-radius: 9px;
+  border: 1px solid var(--line); background: var(--panel);
+  color: var(--txt); font: 600 12.5px var(--mono); outline: none;
+}
+.settings-mention:focus { border-color: var(--accentLine); }
+.settings-mention::placeholder { color: var(--txt3); font-weight: 500; }
+.settings-stepper-buttons button {
+  flex: 1; width: 24px; border: 0; background: none; cursor: pointer;
+  font: 700 8px/17px 'Manrope', sans-serif; color: var(--txt2);
+}
+.settings-stepper-buttons button:last-child { border-top: 1px solid var(--line); }
+.settings-stepper-buttons button:hover:not(:disabled) { background: var(--hover); }
+.settings-envref { font: 600 12.5px var(--mono); color: var(--txt2); flex: none; }
+
+.settings-env {
+  margin: 6px 20px 14px; padding: 14px 16px;
+  border: 1px solid var(--roLine); background: var(--ro); border-radius: 12px;
+}
+.settings-env-head { display: flex; align-items: flex-start; gap: 14px; }
+.settings-env-head > div:first-child { flex: 1; min-width: 0; }
+.settings-env-label { font: 700 12.5px 'Manrope', sans-serif; color: var(--txt2); }
+.settings-env-var {
+  font: 600 11.5px var(--mono); color: var(--txt3);
+  margin-top: 5px; overflow-wrap: anywhere;
+}
+.settings-env-status {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 7px; flex: none;
+}
+.settings-status-pill {
+  padding: 4px 11px; border-radius: 999px; white-space: nowrap;
+  font: 700 11px 'Manrope', sans-serif; background: var(--chip); color: var(--txt2);
+}
+.settings-status-pill.ok { background: var(--okSoft); color: var(--ok); }
+.settings-status-pill.warn { background: var(--warnSoft); color: var(--warn); }
+.settings-env-note {
+  font: 500 11.5px/1.55 'Manrope', sans-serif; color: var(--txt3);
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--roLine);
+}
+
+/* One bordered frame around the three modes (BACKLOG.4): they are a single
+   exclusive choice, and three free-floating rows blurred into the .env blocks
+   below. The frame + caption + radio dots say "pick of three, one picked"
+   before a word is read. The dots are indicators — the mode is env-owned. */
+.settings-modes {
+  display: flex; flex-direction: column; gap: 9px; margin: 6px 20px 14px;
+  padding: 12px; border-radius: 14px; border: 1px solid var(--line);
+}
+.settings-modes-caption {
+  font: 600 11px/1.5 'Manrope', sans-serif; color: var(--txt2);
+  padding: 0 4px 2px;
+}
+.settings-modes-caption code { font-family: var(--mono); font-size: 10.5px; }
+.settings-mode {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 13px 16px; border-radius: 12px;
+  border: 1px solid var(--roLine); background: var(--ro);
+}
+.settings-mode.active { border-color: var(--accentLine); background: var(--accentSoft); }
+.settings-mode.risky { border-color: var(--warnSoft); background: var(--warnSoft); }
+.settings-mode-radio {
+  flex: none; width: 14px; height: 14px; margin-top: 1px;
+  border-radius: 50%; border: 2px solid var(--line);
+  background: transparent;
+}
+.settings-mode.active .settings-mode-radio {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 4px, transparent 5px);
+}
+.settings-mode.risky .settings-mode-radio {
+  border-color: var(--warn);
+  background: radial-gradient(circle, var(--warn) 0 4px, transparent 5px);
+}
+.settings-mode-name { width: 118px; flex: none; font: 600 12.5px var(--mono); color: var(--txt2); }
+.settings-mode.active .settings-mode-name { color: var(--accent); }
+.settings-mode.risky .settings-mode-name { color: var(--warn); }
+.settings-mode-desc {
+  flex: 1; min-width: 0; font: 500 11.5px/1.6 'Manrope', sans-serif; color: var(--txt2);
+}
+.settings-mode-active {
+  flex: none; padding: 3px 10px; border-radius: 999px;
+  background: var(--accent); color: var(--onAccent);
+  font: 700 9.5px var(--mono); letter-spacing: 0.05em;
+}
+.settings-mode.risky .settings-mode-active { background: var(--warn); }
+.settings-warn {
+  padding: 13px 16px; border-radius: 12px;
+  border: 1px solid var(--roLine); background: var(--ro);
+  font: 500 11.5px/1.6 'Manrope', sans-serif; color: var(--txt2);
+}
+.settings-warn.live { border-color: var(--warnSoft); background: var(--warnSoft); }
+.settings-banner code, .settings-warn code { font-family: var(--mono); font-size: 11px; }
+
+/* Derived rows (§5a): read-only by construction, so they carry no control at
+   all rather than a disabled one — there is nothing here an operator could set.
+   Deliberately NOT tinted: grey means "a recessed sub-block owned by .env" on
+   this screen (see .settings-env), and a full-bleed grey row said the wrong
+   thing in two directions at once — it read as a different *kind* of thing, and
+   it was the only grey that spanned the whole card. The `DERIVED` tag carries
+   the meaning; the background does not need to. */
+.settings-derived-value {
+  flex: none; font: 700 13px var(--mono); color: var(--txt2);
+}
+/* Insets match .settings-env exactly: on this screen a tinted block is always
+   narrower than its card, which is what makes it read as contained by it. */
+.settings-triggers {
+  margin: 6px 20px 14px; padding: 14px 16px; border-radius: 12px;
+  border: 1px solid var(--roLine); background: var(--ro);
+}
+.settings-triggers-title {
+  font: 700 9.5px var(--mono); letter-spacing: 0.05em; color: var(--txt3);
+  text-transform: uppercase; margin-bottom: 8px;
+}
+.settings-triggers ul { margin: 0; padding-left: 18px; }
+.settings-triggers li {
+  font: 500 11.5px/1.7 'Manrope', sans-serif; color: var(--txt2);
+}
+.settings-triggers .settings-note { margin-top: 10px; }
+
+/* The screen owns its own scrolling so the save bar can sit outside it: the
+   page header stays put, the cards scroll between them, and the bar is always
+   one click away wherever you are in the list. `min-height: 0` on the scroller
+   is load-bearing — without it a flex child refuses to shrink below its content
+   and the whole column scrolls instead, which is the bug this replaced. */
+.settings-screen { display: flex; flex-direction: column; overflow: hidden; }
+.settings-screen .page-head { flex: none; }
+/* The right padding is the gap between the cards and this scroller's own
+   scrollbar — without it the bar sits flush against the card edges
+   (validation 2026-08-07, finding 4). Every other scroller inherits a gap
+   from `.content`'s padding; this one owns its scrolling, so it pays for
+   its own. */
+.settings-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 10px 8px 0; }
+
+.settings-savebar {
+  flex: none; z-index: 5;
+  display: flex; align-items: center; gap: 14px; margin-top: 16px;
+  padding: 12px 14px 12px 18px;
+  background: var(--panel); border: 1px solid var(--accentLine);
+  border-radius: 14px; box-shadow: var(--shadow);
+}
+.settings-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.settings-savebar-title { font: 800 13px 'Manrope', sans-serif; }
+.settings-savebar-list {
+  font: 500 11.5px 'Manrope', sans-serif; color: var(--txt3); margin-top: 2px;
+}
+
+/* Auth mode, visible outside the settings screen (§6c, §12). */
+.auth-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px; border-radius: 999px; white-space: nowrap;
+  border: 1px solid var(--accentLine); background: var(--accentSoft);
+  color: var(--accent); font: 700 10.5px var(--mono); letter-spacing: 0.04em;
+}
+.auth-chip.open { border-color: var(--warnSoft); background: var(--warnSoft); color: var(--warn); }
+
+/* --- Location: manual vs derived (v1 §4a) --------------------------------
+   Two values shown together, never merged. The tint marks the derived half as
+   subordinate to the pinned value above it — same recessed-sub-block idiom as
+   `.settings-env`, and inset to match, because on these screens a full-bleed
+   tint reads as a different card rather than a note within one. */
+/* Accent, not grey. The first version was `--txt3` on `--chip` — two adjacent
+   neutrals, which failed to read in either theme. This is the same treatment
+   `.auth-chip` already uses for a small standing label, so the two now agree. */
+.loc-tag {
+  margin-left: 8px; padding: 2px 7px; border-radius: 999px;
+  border: 1px solid var(--accentLine); background: var(--accentSoft);
+  color: var(--accent);
+  font: 700 9.5px var(--mono); letter-spacing: 0.04em; text-transform: uppercase;
+}
+/* A derived location the provider has stopped reporting (audit S8). Warn, not
+   error: the value is still served and may still be right. */
+.loc-tag.warn {
+  border-color: var(--warnSoft); background: var(--warnSoft); color: var(--warn);
+}
+.loc-disagree {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 8px 0 2px; padding: 8px 12px; border-radius: 8px;
+  border: 1px solid var(--warnSoft); background: var(--warnSoft);
+}
+.loc-disagree-text { font: 500 11.5px 'Manrope', sans-serif; color: var(--warn); }
+.loc-disagree-text strong { font-weight: 800; }
+.loc-disagree .link-btn { margin-left: auto; font-size: 11.5px; }
+.settings-provider-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.settings-provider-facts { font-size: 11px; color: var(--txt3); }
+/* Pre-wrap because the blind-token detail carries two `pveum` commands on their
+   own lines — collapsing them would make the fix unusable as a copy-paste. */
+.settings-provider-detail { white-space: pre-wrap; font-family: var(--mono); font-size: 11px; }
+/* Secondary line inside a probe result row — says what the value means without
+   competing with it. */
+.probe-note { display: block; margin-top: 2px; color: var(--txt3); font: 500 10.5px 'Manrope', sans-serif; }
+
+/* --- Command Center (v1 §8, §7d) ----------------------------------------- */
+/* Layout and proportions from `design/HomeLab OS Command Center v1.html`.
+   Colours are variables only — the mockup's token set is the one above. */
+
+.dash { display: flex; gap: 0; padding: 0; overflow: hidden; }
+.dash-main { flex: 1; min-width: 0; overflow: auto; padding: 24px 26px 34px; }
+.dash-card { padding: 18px 20px; }
+.dash-card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.dash-card-title { font: 800 14px 'Manrope', sans-serif; }
+.dash-aside { font: 600 11.5px 'Manrope', sans-serif; color: var(--txt3); }
+.dash-stamp { font: 500 10.5px var(--mono); color: var(--txt3); }
+.dash-headline { font: 800 18px 'Manrope', sans-serif; margin: 10px 0 4px; }
+.dash-key { font: 600 12px 'Manrope', sans-serif; color: var(--txt2); }
+.dash-strong { font: 800 14px 'Manrope', sans-serif; margin-left: auto; }
+.dash-num { font: 600 12.5px var(--mono); }
+.dash-of { font: 500 11.5px 'Manrope', sans-serif; color: var(--txt3); }
+.dash-split {
+  display: flex; align-items: baseline; gap: 10px;
+  border-top: 1px solid var(--line2); margin-top: 12px; padding-top: 12px;
+}
+.dash-split .dash-num { margin-left: auto; }
+.dash-big { display: flex; align-items: baseline; gap: 5px; margin-top: 8px; }
+.dash-big-value { font: 800 26px 'Manrope', sans-serif; color: var(--accent); }
+.dash-big-of { font: 600 14px 'Manrope', sans-serif; color: var(--txt3); }
+.dash-meter-row { display: flex; align-items: baseline; gap: 8px; margin-top: 14px; }
+.dash-counts { display: flex; align-items: baseline; gap: 10px; margin-top: 14px; }
+.dash-empty { font: 500 12px 'Manrope', sans-serif; color: var(--txt3); padding: 4px 0 2px; }
+.dash-degraded { border-color: var(--warnSoft); }
+
+/* Summary row: three cards, the mockup's 1 / 1.15 / 1.15 proportions. It wraps
+   to one column rather than scrolling sideways — the catalog is usable on a
+   laptop and the dashboard has to be too. */
+.dash-summary {
+  display: grid; grid-template-columns: 1fr 1.15fr 1.15fr; gap: 14px; margin-top: 4px;
+}
+@media (max-width: 1100px) { .dash-summary { grid-template-columns: 1fr; } }
+
+.meter { height: 8px; border-radius: 5px; background: var(--chip); overflow: hidden; margin-top: 8px; }
+.meter.thin { height: 6px; margin-top: 0; flex: 1; }
+.meter-fill { display: block; height: 100%; border-radius: 5px; }
+.meter-fill.grad { background: var(--grad); }
+
+.stat-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.stat-tile {
+  flex: 1; min-width: 74px; padding: 10px 12px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--panel2); cursor: pointer; text-align: left;
+}
+.stat-tile:hover { border-color: var(--accentLine); }
+.stat-value { font: 800 20px 'Manrope', sans-serif; }
+.stat-label { font: 600 11px 'Manrope', sans-serif; color: var(--txt3); margin-top: 2px; }
+
+.dash-list { margin-top: 16px; border-top: 1px solid var(--line2); padding-top: 12px; }
+.dash-list-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 0;
+  background: none; border: 0; border-bottom: 1px solid var(--line2); cursor: pointer;
+  text-align: left;
+}
+.dash-list-row:hover .dash-list-name { color: var(--accent); }
+.dash-list-name {
+  flex: 1; min-width: 0; font: 600 12.5px 'Manrope', sans-serif;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Nodes table — §7d's eight columns, the mockup's grid proportions. */
+.nodes-table { margin-top: 16px; }
+.nodes-table .dash-card-head { padding: 16px 22px 4px; margin: 0; }
+.row.node-row { grid-template-columns: 1.3fr 0.8fr 1fr 0.9fr 0.9fr 0.7fr 1.3fr 0.7fr; }
+.node-name { font: 600 12.5px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.node-cell { font: 500 12px var(--mono); color: var(--txt2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.node-cell.fixed { width: 34px; flex: none; color: var(--txt); }
+.node-meter { display: flex; align-items: center; gap: 8px; min-width: 0; }
+
+/* --- Detail drawer (§7d) -------------------------------------------------- */
+/* A side panel, not a modal: it sits beside the table it was opened from, so
+   the numbers stay comparable. No backdrop, nothing trapped. */
+.drawer {
+  width: 360px; flex: none; overflow: auto; padding: 22px;
+  border-left: 1px solid var(--line); background: var(--panel2);
+}
+@media (max-width: 1100px) { .drawer { display: none; } }
+.drawer-head { display: flex; align-items: center; }
+.drawer-heading { font: 800 15px 'Manrope', sans-serif; }
+.drawer-close {
+  margin-left: auto; background: none; border: 0; cursor: pointer;
+  font: 700 13px 'Manrope', sans-serif; color: var(--txt3);
+}
+.drawer-close:hover { color: var(--err); }
+.drawer-card { margin-top: 14px; padding: 0; overflow: hidden; }
+.drawer-title-row { padding: 16px 18px; }
+.drawer-name { font: 800 15px 'Manrope', sans-serif; }
+.drawer-sub { font: 500 11.5px 'Manrope', sans-serif; color: var(--txt3); margin-top: 2px; }
+.drawer-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 18px; border-top: 1px solid var(--line2);
+}
+.drawer-key {
+  font: 700 10.5px 'Manrope', sans-serif; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--txt3); flex: none;
+}
+.drawer-value {
+  margin-left: auto; text-align: right; min-width: 0;
+  font: 600 12px var(--mono); color: var(--txt);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.drawer-value.link { color: var(--accent); }
+.drawer-actions { padding: 14px 18px 18px; border-top: 1px solid var(--line2); }
+.drawer-action {
+  display: flex; align-items: center; gap: 11px; margin-top: 10px;
+  padding: 11px 14px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--panel); cursor: pointer;
+  font: 600 12.5px 'Manrope', sans-serif; color: var(--txt); text-decoration: none;
+}
+.drawer-action:hover { border-color: var(--accentLine); text-decoration: none; }
+.drawer-action-mark { width: 18px; height: 18px; border-radius: 6px; background: var(--chip); flex: none; }
+.drawer-action-arrow { font: 700 12px 'Manrope', sans-serif; color: var(--txt3); }
+.drawer-empty { font: 500 11.5px 'Manrope', sans-serif; color: var(--txt3); margin-top: 10px; }
+
+/* `.mono` was only ever styled inside `.field` (`.field input.mono`), so the
+   class silently did nothing anywhere else. Make it mean what it says. */
+.mono { font-family: var(--mono); }
+/* The active screen in the top-bar nav. */
+.link-btn.on { color: var(--accent); }
+
+/* --- Sidebar nav and foot (V1.5 validation, findings 2 and 4) ------------- */
+/* Primary navigation at the top, Settings pinned to the bottom under a rule,
+   with worker liveness immediately above it. Mirrors Project Vault's layout. */
+/* Primary navigation reads as buttons, not as more rows in the list below it.
+   The distinction is deliberate: `.side-item` is a *filter* (a saved view, a
+   category) and these are *destinations*. Same treatment as the mockup's rail —
+   an icon block, the label, and a dot that marks the current screen. */
+/* The bottom margin is load-bearing, not decoration: with the rule between them
+   gone, this gap is the only thing separating *destinations* from the *filters*
+   below, and at 6px the "SAVED VIEWS" heading crowded the buttons. */
+.side-nav {
+  padding: 4px 12px 0; margin-bottom: 18px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 10px 12px; border-radius: 10px; cursor: pointer; text-align: left;
+  background: var(--panel2); border: 1px solid var(--line);
+}
+.nav-item:hover { background: var(--hover); border-color: var(--accentLine); }
+.nav-item.active {
+  background: var(--accentSoft); border-color: var(--accentLine);
+}
+.nav-label {
+  flex: 1; min-width: 0; font: 600 13px 'Manrope', sans-serif; color: var(--txt);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nav-item.active .nav-label { font-weight: 800; color: var(--accent); }
+/* Present but invisible until active, so the label never shifts sideways when
+   the current screen changes. */
+.nav-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex: none; background: transparent;
+}
+.nav-item.active .nav-dot { background: var(--accent); }
+.side-foot { margin-top: auto; padding: 0 12px 10px; }
+.side-foot .side-item { width: 100%; background: none; border: 0; text-align: left; }
+.side-rule { height: 1px; background: var(--line); margin: 10px 2px; }
+/* `.worker-status` still carries the old bottom-anchoring (`margin-top: auto`
+   plus a top border) from when it was the only thing down here. Inside the foot
+   those must both go, or each of the two worker rows fights for the free space
+   and the pair drifts apart. */
+.side-foot .worker-status { margin-top: 0; padding: 5px 12px; border-top: 0; }
+
+/* --- ComboInput: in-app suggestions (replaces the native datalist) -------- */
+/* The native control was rejected for looking like browser chrome rather than
+   part of the app, so this deliberately reuses the app's own surfaces, radii and
+   accent — the same treatment `.side-item.active` and `.view-chip.on` use. */
+.combo { position: relative; }
+.combo-list {
+  position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; right: 0;
+  margin: 0; padding: 4px; list-style: none;
+  max-height: 216px; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(20, 20, 45, 0.22);
+}
+.combo-option {
+  padding: 8px 12px; border-radius: 8px; cursor: pointer;
+  font: 600 12.5px 'Manrope', sans-serif; color: var(--txt2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.combo-option.active { background: var(--accentSoft); color: var(--accent); }
+.combo-empty {
+  position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; right: 0;
+  padding: 9px 12px; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line);
+  font: 500 11.5px 'Manrope', sans-serif; color: var(--txt3);
+}
+/* The tag field's dropdown is the same list, anchored to the whole chip box
+   rather than to the inline entry input. */
+.tag-input { position: relative; }

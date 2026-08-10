@@ -1,0 +1,58 @@
+# Added by code-review-graph
+.code-review-graph/
+
+# Secrets — .env holds real tokens. Only .env.example is ever committed.
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Django
+backend/staticfiles/
+backend/.cache/
+media/
+_export/
+
+# Node / Vite
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Local database backups (ops/backup.sh default target)
+backups/
+
+# Private, never ships — tracked HERE rather than in .git/info/exclude, which
+# does not survive a clone: on a fresh checkout `git add .` must not be able to
+# stage any of this. (Audit B6 — B1 was seventeen private docs reaching pushed
+# history exactly this way.)
+spec/
+design/
+_backups/
+.claude/
+.vscode/
+.gitnexus/
+.clinerules
+.mcp.json
+CLAUDE.md
+AGENTS.md
+.github/code-review-graph.instruction.md
+
+# Ops: backup.sh and watchdog.sh are the tracked deliverables. DEPLOY.md,
+# RESTORE.md and kan_sync.py are deliberately private (operator ruling,
+# 2026-08-07) — the README carries the public install/backup/restore doc.
+ops/DEPLOY.md
+ops/RESTORE.md
+ops/kan_sync.py
+
+# Editors / OS
+.DS_Store
+Thumbs.db

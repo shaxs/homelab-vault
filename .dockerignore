@@ -1,0 +1,39 @@
+# Keep secrets and local state out of the build context entirely. Nothing here
+# is COPYed by the Dockerfile today, but the build context is what gets sent to
+# the daemon, and a future COPY line should not be able to sweep .env into a
+# layer by accident.
+.env
+.env.*
+!.env.example
+
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.sqlite3
+*.sqlite3-*
+backend/staticfiles/
+backend/.cache/
+media/
+_export/
+# Database dumps (ops/backup.sh writes ./backups by default) must never reach
+# a build context — an image layer is the worst place for a backup to leak.
+backups/
+
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+.git/
+.github/
+.vscode/
+_backups/
+
+# Local-only working directories, never part of a build context. Kept here
+# because they exist in a development checkout even though the repository
+# does not carry them.
+.claude/
+.code-review-graph/
+.gitnexus/
+spec/
+design/

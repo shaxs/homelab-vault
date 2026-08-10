@@ -1,0 +1,193 @@
+# Homelab Vault — web / worker / db (spec §3b).
+#
+# HOW CONFIGURATION FLOWS, because it is two separate mechanisms:
+#
+#   1. `${VAR:-default}` and `${VAR:?message}` below are substituted BY COMPOSE,
+#      which reads `.env` from this directory automatically. That is where your
+#      .env values are picked up.
+#   2. The `environment:` block is what Compose then passes INTO the container.
+#      Compose does not inject `.env` into containers on its own, so anything
+#      not listed there is invisible to the app no matter what `.env` says.
+#
+# The list is explicit rather than `env_file: .env` on purpose: env_file would
+# push every variable into every container, including the database password into
+# the web container, which has no business seeing it.
+#
+# Settings shared by web and worker live in the anchor below so the two cannot
+# drift apart — a health check that validates URLs differently from the probe
+# would be a genuinely confusing bug.
+
+x-app-env: &app-env
+  DATABASE_URL: postgres://${POSTGRES_USER:-homelabvault}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-homelabvault}
+  SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+  DEBUG: ${DEBUG:-False}
+
+  # Health checks (§8). The live interval and threshold are settings-table
+  # values as of v1.3; these only stamp services created before it.
+  HEALTH_DEFAULT_INTERVAL_S: ${HEALTH_DEFAULT_INTERVAL_S:-60}
+  HEALTH_DEFAULT_TIMEOUT_MS: ${HEALTH_DEFAULT_TIMEOUT_MS:-5000}
+  HEALTH_DEFAULT_FAIL_THRESHOLD: ${HEALTH_DEFAULT_FAIL_THRESHOLD:-3}
+
+  # Discord webhook (§5) — a credential, and shared rather than web-only: the
+  # worker sends the health transitions and the deadman's stall alert, which are
+  # the notifications that matter most. Unset is fine; notifications are off by
+  # default in Settings and an unset webhook logs and carries on.
+  HOMELABVAULT_DISCORD_WEBHOOK_URL: ${HOMELABVAULT_DISCORD_WEBHOOK_URL:-}
+
+  # Proxmox, read-only (§7a). Shared rather than worker-only, deliberately: only
+  # `proxmox-worker` ever calls the cluster, but `web` reads PROXMOX_HOST and
+  # PROXMOX_API_TOKEN to report configured/not-configured on the settings screen
+  # and to hide the panels when unset (§7d). Web reporting "Not configured"
+  # against a worker that is happily polling would be a confusing lie, and the
+  # web container never makes an outbound Proxmox call regardless — it serves the
+  # worker's cached snapshot (§7c).
+  #
+  # PROXMOX_HOST must carry the scheme: the PVE API is HTTPS on 8006.
+  # PROXMOX_API_TOKEN is the COMPLETE PVEAPIToken=USER@REALM!TOKENID=UUID string.
+  PROXMOX_HOST: ${PROXMOX_HOST:-}
+  PROXMOX_API_TOKEN: ${PROXMOX_API_TOKEN:-}
+  # Explicit and named, never a hidden verify=False (V0 security finding #4).
+  # Proxmox ships a self-signed certificate on 8006 by default.
+  PROXMOX_VERIFY_TLS: ${PROXMOX_VERIFY_TLS:-False}
+  PROXMOX_TIMEOUT_S: ${PROXMOX_TIMEOUT_S:-15.0}
+
+  # SSRF policy (§4c). The worker needs this too — it validates every health URL
+  # through the same code path.
+  PROBE_ALLOWED_NETWORKS: ${PROBE_ALLOWED_NETWORKS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10}
+  PROBE_VERIFY_TLS: ${PROBE_VERIFY_TLS:-False}
+  PROBE_TIMEOUT_S: ${PROBE_TIMEOUT_S:-5.0}
+  PROBE_MAX_REDIRECTS: ${PROBE_MAX_REDIRECTS:-3}
+  PROBE_MAX_BYTES: ${PROBE_MAX_BYTES:-262144}
+  PROBE_MAX_ICON_BYTES: ${PROBE_MAX_ICON_BYTES:-524288}
+  ICON_MAX_INLINE_BYTES: ${ICON_MAX_INLINE_BYTES:-32768}
+
+  # Recovery export (§9). Both containers write it: web on mutation, worker on
+  # retry. The path is inside the container; the host side is STATIC_EXPORT_DIR.
+  STATIC_EXPORT_PATH: /export/index.html
+  STATIC_EXPORT_ENABLED: ${STATIC_EXPORT_ENABLED:-True}
+  STATIC_EXPORT_MAX_ICON_BYTES: ${STATIC_EXPORT_MAX_ICON_BYTES:-98304}
+  # Deliberately on the SHARED volume, not each container's own filesystem. web
+  # writes this marker when an export fails and worker reads it to retry; with a
+  # per-container path the retry would never fire — which is the one job it has.
+  STATIC_EXPORT_STALE_MARKER: /data/export.stale
+
+  # Cached favicons (§9 inlines these into the export), also shared.
+  MEDIA_ROOT: /data/media
+  CACHE_DIR: /data/cache
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-homelabvault}
+      POSTGRES_USER: ${POSTGRES_USER:-homelabvault}
+      # No default: a database password baked into a committed file is a
+      # password everybody has. Compose fails fast with this message instead.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      # Local storage on the Proxmox node, never NFS (spec §3).
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-homelabvault}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *app-env
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-}
+      # Tokens are the write gate (§4c) — only the web container needs them.
+      HOMELABVAULT_ADMIN_TOKEN: ${HOMELABVAULT_ADMIN_TOKEN:?set HOMELABVAULT_ADMIN_TOKEN in .env}
+      HOMELABVAULT_AGENT_TOKEN: ${HOMELABVAULT_AGENT_TOKEN:-}
+      # Auth mode (§6c) and the destructive-delete re-prompt window (§6b).
+      # Documented in .env.example since V1.2 but never passed through until
+      # audit B4 — per the header note, a variable not listed here is invisible
+      # to the app no matter what .env says, so open-writes silently stayed
+      # `full` in every Docker deployment.
+      HOMELABVAULT_AUTH_MODE: ${HOMELABVAULT_AUTH_MODE:-full}
+      ADMIN_REAUTH_WINDOW_S: ${ADMIN_REAUTH_WINDOW_S:-300}
+      SESSION_LOGIN_MAX_ATTEMPTS: ${SESSION_LOGIN_MAX_ATTEMPTS:-10}
+      SESSION_LOGIN_WINDOW_S: ${SESSION_LOGIN_WINDOW_S:-300}
+      SESSION_COOKIE_AGE: ${SESSION_COOKIE_AGE:-1209600}
+      # Cookies default to Secure when DEBUG=False; over plain http on the LAN
+      # that silently drops them and every UI write fails with a CSRF error.
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-False}
+      CSRF_COOKIE_SECURE: ${CSRF_COOKIE_SECURE:-False}
+      SECURE_HSTS_SECONDS: ${SECURE_HSTS_SECONDS:-0}
+      SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-False}
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    # Passing this means migrations have run AND gunicorn is serving, which is
+    # what the worker waits on below.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/v1/services > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    volumes:
+      - appdata:/data
+      # The recovery export belongs on the NAS share, not in the container —
+      # its entire purpose is surviving this host being down (§9).
+      #
+      # This is a BIND mount, so the host directory's ownership wins and Docker
+      # creates it as root if missing. The container runs as uid 10001, so an
+      # unprepared directory means every export fails. Before first start:
+      #     mkdir -p _export && chown 10001:10001 _export
+      # (`appdata` above is a NAMED volume and needs none of this — Docker
+      # initialises it from the image, ownership included.)
+      - ${STATIC_EXPORT_DIR:-./_export}:/export
+
+  worker:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      # Waits for MIGRATIONS, not just for the database. web runs `migrate`
+      # before starting gunicorn, so a passing web healthcheck is the signal
+      # that the schema exists. Depending only on the database lets the worker
+      # win the race and query `services` before the table is created — which
+      # it survives (a failed pass never kills the loop) but which logs an
+      # alarming traceback on every fresh deploy.
+      web:
+        condition: service_healthy
+    command: python manage.py health_worker
+    environment:
+      <<: *app-env
+    volumes:
+      - appdata:/data
+      - ${STATIC_EXPORT_DIR:-./_export}:/export
+
+  # The fourth service (§7c). **Its own process, not a second loop inside
+  # `worker`**: Proxmox being slow must never delay health checks, and the two
+  # have to be able to die independently — which is exactly what the deadman
+  # relies on, since it judges each worker by its own heartbeat and interval.
+  #
+  # Safe to leave running with no Proxmox configured: the pass short-circuits,
+  # the worker still beats, and nothing else in the app changes (§7d). It needs
+  # no volumes — it writes only to Postgres, and the snapshot lives there
+  # precisely so `web` can serve it from another container.
+  proxmox-worker:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    command: python manage.py proxmox_worker
+    environment:
+      <<: *app-env
+
+volumes:
+  pgdata:
+  appdata:
