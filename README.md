@@ -8,6 +8,12 @@
 
 Homelab Vault gives a homelab a searchable source of truth for the services it runs. It records where services live, checks whether they are healthy, and provides a fast way to open them. People can use the web interface; automation and local LLM-based infrastructure agents can use the authenticated API.
 
+<p align="center">
+  <a href="docs/images/catalog.png"><img src="docs/images/catalog.png" alt="Service catalog" width="32%"></a>
+  <a href="docs/images/dashboard.png"><img src="docs/images/dashboard.png" alt="Command Center dashboard" width="32%"></a>
+  <a href="docs/images/add-service.png"><img src="docs/images/add-service.png" alt="Add service form" width="32%"></a>
+</p>
+
 ## Why Homelab Vault exists
 
 Homelab dashboards are often maintained as YAML files. That is reasonable for rendering a static page, but it is a poor maintenance interface for automation:
