@@ -1,279 +1,321 @@
 # Homelab Vault
 
-A fast, searchable, health-aware launcher for the lab.
+[](LICENSE)
+
+> An API-first, self-hosted service catalog for humans and infrastructure agents.
+
+**Find a service → see if it is alive → open it.**
+
+Homelab Vault gives a homelab a searchable source of truth for the services it runs. It records where services live, checks whether they are healthy, and provides a fast way to open them. People can use the web interface; automation and local LLM-based infrastructure agents can use the authenticated API.
+
+## Why Homelab Vault exists
+
+Homelab dashboards are often maintained as YAML files. That is reasonable for rendering a static page, but it is a poor maintenance interface for automation:
+
+- Updating nested YAML safely is brittle.
+  
+- Agents must preserve unrelated entries and formatting.
+  
+- Concurrent edits can overwrite each other.
+  
+- Validation and authorization are difficult to express consistently.
+  
+- Presentation configuration becomes the accidental source of truth.
+  
+
+Homelab Vault was built as an alternative to that workflow. The database and API are authoritative. The web UI, health workers, recovery export, and future integrations are clients of the same source of truth.
+
+An infrastructure agent should be able to register a service or update its metadata with a validated API request—not by rewriting a dashboard file.
+
+#### A note from the author
+
+I designed Homelab Vault to solve a problem in my own infrastructure: using YAML as the maintenance interface for a homelab dashboard made it unnecessarily difficult for automation and local LLM-based infrastructure agents to update service information safely.
+
+I define the product direction, architecture, user experience, and operational requirements. The implementation is produced with AI-assisted development tools, supported by a workflow built around written specifications, automated tests, security review, live-deployment validation, and documented operational checks.
+
+This is an actively developed self-hosted project, not a hosted commercial service. It reflects the needs of my own homelab and will continue to evolve as those needs change. Services, interfaces, and integrations may change over time as I use the project, learn what works, and respond to feedback from other users.
+
+Please review the configuration and security model before exposing an instance beyond a trusted network.
+
+## What it provides
+
+- **Searchable service catalog** with stable slugs and categories.
+  
+- **Health-aware status** with configurable intervals, timeouts, and failure thresholds.
+  
+- **API-first writes** for scripts, automation, and scoped infrastructure agents.
+  
+- **Human-friendly web UI** for browsing and editing the catalog.
+  
+- **Optional Proxmox enrichment** showing the node and guest associated with a service.
+  
+- **Static recovery export** that remains usable when the application is unavailable.
+  
+- **Database backups and restore documentation** for operational recovery.
+  
+- **Health endpoint and external watchdog** for monitoring the monitor.
+  
+
+## Architecture
 
 ```text
-Find a service → see if it's alive → open it
+backend/    Django + Django Ninja API and workers
+
+frontend/   Vue 3 + Vite single-page application
+
+ops/        backup and external watchdog scripts
+
+
+
+web         Django application and compiled SPA
+
+worker      HTTP health checks
+
+proxmox-worker  optional Proxmox location enrichment
+
+db          PostgreSQL
 ```
 
-Nothing else. If a feature does not serve that sentence, it is not here.
+The default deployment uses Docker Compose:
 
-## Stack
+- **Backend:** Django + Django Ninja
+  
+- **Frontend:** Vue 3, Vite, and Whitenoise
+  
+- **Database:** PostgreSQL
+  
+- **Workers:** asyncio + httpx
+  
+- **Packaging:** Docker Compose
+  
 
-| | |
-|---|---|
-| Backend | Django + Django Ninja |
-| Frontend | Vue 3 SPA (Vite), served by Django via whitenoise |
-| Database | PostgreSQL — in production and in development alike |
-| Workers | `health_worker` (health checks, asyncio + httpx) and `proxmox_worker` (optional location enrichment) — separate processes, so one being slow never delays the other |
-| Packaging | `docker compose` — four services: `web`, `worker`, `proxmox-worker`, `db` |
+## Quick start
 
-```text
-backend/    Django project (config/, services/)
-frontend/   Vue 3 + Vite SPA
-ops/        backup.sh (nightly dump), watchdog.sh (external liveness check)
-```
+### Requirements
 
-## Quick start (Docker)
+- Docker Engine
+  
+- Docker Compose
+  
+- A host with persistent storage for PostgreSQL and backups
+  
+
+### Start the application
 
 ```bash
+git clone https://github.com/shaxs/homelab-vault.git
+
+cd homelab-vault
+
+
+
 cp .env.example .env
-# Fill in the three required values at the top — SECRET_KEY,
-# POSTGRES_PASSWORD, HOMELABVAULT_ADMIN_TOKEN. Generate each with:
-#   openssl rand -hex 32
-
-# The recovery export is written to a BIND-mounted host directory, and the
-# containers run as uid 10001 — an unprepared directory means every export
-# fails silently. Create it once before first start:
-mkdir -p _export && chown 10001:10001 _export
-
-docker compose up --build
 ```
 
-Everything else in `.env.example` is commented out and already has a working
-default; uncomment a line only to change it. Compose refuses to start if one of
-the three required values is missing, naming the one it wants — there are no
-default secrets to forget to change.
+Set the required values in `.env`:
 
-Then open <http://localhost:8000>. A fresh install lands on the empty state; add
-your first service from there — no database access and no source reading needed.
+```text
+SECRET_KEY=<random-secret>
 
-**This is the complete default experience.** Proxmox is an optional
-enrichment (it annotates each service with the node and guest it runs on) and
-nothing else changes without it: with `PROXMOX_HOST` unset there is no polling,
-no Proxmox panel, and no degradation anywhere else. The Tailscale CGNAT range
-in the probe allowlist is likewise just a default — nothing requires a tailnet.
+POSTGRES_PASSWORD=<database-password>
 
-## Local development (no Docker)
+HOMELABVAULT_ADMIN_TOKEN=<admin-token>
+```
 
-Python 3.13+ and Node 22+ (what the container images pin).
+Generate random values with:
 
 ```bash
-python -m venv .venv
-.venv/Scripts/activate          # Windows;  source .venv/bin/activate elsewhere
-pip install -r backend/requirements-dev.txt
-
-cd backend
-python manage.py migrate
-python manage.py runserver              # http://localhost:8000
-python manage.py health_worker          # in a second terminal
-python manage.py proxmox_worker         # optional, only with a provider configured
+openssl rand -hex 32
 ```
 
-Frontend:
+Prepare the recovery-export directory. The containers write as UID `10001`:
 
 ```bash
-cd frontend
-npm ci
-npm run build     # Django serves the build output from frontend/dist
-npm run dev       # or: Vite dev server on :5173, proxying /api to :8000
+mkdir -p _export
+
+chown 10001:10001 _export
 ```
 
-Tests:
+Start the stack:
 
 ```bash
-cd backend && python -m pytest      # pytest + pytest-django, needs PostgreSQL
-cd frontend && npm test             # vitest
+docker compose up --build -d
 ```
 
-`DATABASE_URL` is required and there is no SQLite fallback, so the backend
-suite needs a reachable PostgreSQL server — there is no offline test run. The
-role needs `LOGIN` and `CREATEDB`: pytest-django creates and drops
-`test_<dbname>` on every run, and without `CREATEDB` the suite dies at setup
-rather than at a test.
+Open:
 
-## Configuration
+```text
+http://localhost:8000
+```
 
-Deploy-time configuration lives in environment variables. Runtime preferences —
-landing page, panel visibility, health thresholds, notification and Proxmox
-toggles — live in the **Settings screen** (admin session required), which also
-shows the env-owned controls read-only, each labelled with its variable name.
+A new installation starts with an empty catalog. Add the first service from the web interface or through the API.
 
-Two mechanisms are at work in `docker-compose.yml`: `${VAR}` is substituted by
-Compose *from `.env`*, while the `environment:` block is what actually reaches
-the container. A variable must appear in both to have any effect — which is why
-`.env.example` and the compose file are kept in step.
-
-### Required
-
-| Variable | Meaning |
-|---|---|
-| `SECRET_KEY` | Django secret. The insecure dev default is refused once `DEBUG=False`. |
-| `POSTGRES_PASSWORD` | Database password. No default. |
-| `HOMELABVAULT_ADMIN_TOKEN` | Full access including `DELETE` and `/api/v1/probe`. The UI exchanges this for a session cookie. |
-
-### Access
-
-| Variable | Meaning | Default |
-|---|---|---|
-| `HOMELABVAULT_AGENT_TOKEN` | `GET`, `POST`, `PATCH` only, for scripts and agents. | unset — no agent access |
-| `HOMELABVAULT_AUTH_MODE` | `full` (token for every write), `open-writes` (no token to add/edit; the four `DELETE`s still need admin), or `open`. Fails closed: unset or misspelled is `full`. Probe, icon and settings endpoints stay admin-only in every mode. | `full` |
-| `ADMIN_REAUTH_WINDOW_S` | Destructive `DELETE`s re-prompt for the admin token after this many seconds. | `300` |
-| `SESSION_LOGIN_MAX_ATTEMPTS` / `SESSION_LOGIN_WINDOW_S` | Failed admin-token attempts per IP before a lockout window. | `10` / `300` |
-| `SESSION_COOKIE_AGE` | Admin session lifetime, a fixed window from login (never sliding). | `1209600` (14 days) |
-| `SESSION_COOKIE_SECURE` / `CSRF_COOKIE_SECURE` | Compose forces these **off** by default: over plain http the browser silently drops Secure cookies and every UI write fails looking like a CSRF bug. Set `True` once behind https. | `False` |
-| `SECURE_HSTS_SECONDS` / `SECURE_SSL_REDIRECT` | Standard Django TLS hardening, off for plain-http LAN use. | `0` / `False` |
-| `ALLOWED_HOSTS` / `CSRF_TRUSTED_ORIGINS` | Set the second when serving the UI over https through a reverse proxy. | `*` / unset |
-
-### Deployment and database
-
-| Variable | Meaning | Default |
-|---|---|---|
-| `WEB_PORT` | Host port the catalog is served on. | `8000` |
-| `DEBUG` | Django debug mode. Compose defaults it off. | `False` under compose |
-| `POSTGRES_DB` / `POSTGRES_USER` | Database name and user. | `homelabvault` |
-| `DATABASE_URL` | Connection string. **Required, no SQLite fallback.** Compose assembles it from the `POSTGRES_*` values; set it directly only outside compose. | assembled by compose |
-
-### Health checks
-
-| Variable | Meaning | Default |
-|---|---|---|
-| `HEALTH_DEFAULT_INTERVAL_S` / `HEALTH_DEFAULT_TIMEOUT_MS` / `HEALTH_DEFAULT_FAIL_THRESHOLD` | Defaults stamped onto services created before v1.3. The **live** interval and threshold are edited in Settings, not here. | `60` / `5000` / `3` |
-
-### Notifications
-
-| Variable | Meaning | Default |
-|---|---|---|
-| `HOMELABVAULT_DISCORD_WEBHOOK_URL` | Discord webhook — a credential, so it lives in `.env` and is never stored in or returned by the app. Turn notifications on in Settings. Unset is fine. | unset |
-
-### Proxmox (optional)
-
-| Variable | Meaning | Default |
-|---|---|---|
-| `PROXMOX_HOST` | PVE API base, **scheme required** — `https://<host>:8006`. Unset disables enrichment entirely. | unset |
-| `PROXMOX_API_TOKEN` | The complete `PVEAPIToken=USER@REALM!TOKENID=UUID` string. Read-only (`PVEAuditor`) is sufficient — see `.env.example` for the exact `pveum` commands and the privilege-separation trap. | unset |
-| `PROXMOX_VERIFY_TLS` | Off by default: Proxmox ships a self-signed certificate on 8006. Explicit and named, never a hidden `verify=False`. | `False` |
-| `PROXMOX_TIMEOUT_S` | Per-request timeout against the cluster. | `15.0` |
-
-### Probe / SSRF policy
-
-| Variable | Meaning | Default |
-|---|---|---|
-| `PROBE_ALLOWED_NETWORKS` | Comma-separated CIDRs the probe and health checker may reach. **Security control — not UI-editable.** | `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10` |
-| `PROBE_VERIFY_TLS` / `PROBE_TIMEOUT_S` | TLS verification (off — homelab self-signed certs) and per-fetch timeout. | `False` / `5.0` |
-| `PROBE_MAX_REDIRECTS` / `PROBE_MAX_BYTES` / `PROBE_MAX_ICON_BYTES` / `ICON_MAX_INLINE_BYTES` | Redirect, size and icon budgets; every redirect hop is re-validated. | `3` / `262144` / `524288` / `32768` |
-
-`100.64.0.0/10` is in the default allowlist because Tailscale assigns from that
-CGNAT range. Removing it rejects every tailnet-addressed service in the lab.
-
-### Recovery export
-
-| Variable | Meaning | Default |
-|---|---|---|
-| `STATIC_EXPORT_DIR` | **Host** directory the recovery HTML is written to (bind-mounted to `/export`). Point it at a mounted share if you want the file to survive this host being down. | `./_export` |
-| `STATIC_EXPORT_ENABLED` / `STATIC_EXPORT_MAX_ICON_BYTES` | Toggle, and the largest icon inlined into the export. | `True` / `98304` |
-
-Four more variables are container paths that **compose sets itself** —
-`STATIC_EXPORT_PATH`, `STATIC_EXPORT_STALE_MARKER`, `MEDIA_ROOT`, `CACHE_DIR`.
-They exist to be set only when running the backend **outside** compose;
-`.env.example` documents them alongside `DATABASE_URL` for that case.
+Proxmox integration is optional. With `PROXMOX_HOST` unset, the catalog still works normally without polling or location enrichment.
 
 ## API
 
-The auto-generated OpenAPI schema **is** the API documentation — there is no
-hand-written reference to drift out of date.
+The API is the primary machine interface. The generated OpenAPI schema is available at:
 
-- Browsable docs: <http://localhost:8000/api/v1/docs>
-- Schema: <http://localhost:8000/api/v1/openapi.json>
+- <http://localhost:8000/api/v1/docs>
+  
+- <http://localhost:8000/api/v1/openapi.json>
+  
 
-**Everything lives under `/api/v1/`.** The prefix is reserved, not operated:
-one API, no version negotiation, no dual maintenance — the app and its API ship
-as one artifact and move together on every pull. Unprefixed `/api/*` paths
-answer a **307** redirect, which preserves the method and body, so a bookmark
-or a forgotten script still works. New callers should use `/api/v1/` directly.
+All API endpoints live under `/api/v1/`.
 
-Reads are unauthenticated. Writes need a bearer token or an admin session cookie.
-The minimum valid payload is a single field:
+Reads are unauthenticated by design. Writes use either an admin session or a scoped bearer token:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/services \
   -H "Authorization: Bearer $HOMELABVAULT_AGENT_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"launch_url": "https://karakeep.lab.local"}'
+  -d '{"launch_url":"https://example.internal"}'
 ```
 
-The slug is derived from the URL and is the upsert key: running that command
-twice updates one record rather than creating two.
+The minimum service record is a `launch_url`. The API derives a stable slug from the URL when one is not supplied, and repeated writes for the same slug update the existing record rather than creating duplicates.
 
-## Security
+Agent tokens are intended for automation and can be limited to catalog reads and writes. Administrative operations remain protected by the admin token.
 
-**Reads are unauthenticated by design.** The catalog has to open as a browser
-home page with no interstitial — that is the entire point.
+## Security model
 
-The consequence is that **anyone with network access can read a complete
-inventory of the lab** — service names, URLs, and host locations. So:
+The catalog is readable without authentication so it can function as a simple internal home page. That also means an instance exposes its service inventory to anyone who can reach it.
 
-> **Homelab Vault must never be exposed beyond your private network without
-> adding real authentication.**
+> Do not expose Homelab Vault beyond a trusted network without adding an appropriate authentication and access-control layer.
 
-`/api/v1/probe` fetches user-supplied URLs from inside the network, so it is
-admin-scope only, restricted to `http`/`https`, blocked from loopback,
-link-local and cloud-metadata addresses, capped at 3 redirects with every hop
-re-validated, and size- and time-bounded. Favicons are fetched only from the same
-origin as the probed page.
+The application includes several defensive controls:
 
-URL fields are validated at write time: launch, external, repo and docs URLs
-must be full `http(s)` URLs, health URLs may also be `tcp://`, and icons are
-limited to http(s), base64 `data:image/…`, or the app's own cache path — so a
-stored `javascript:` URL cannot exist, in this UI or any future one.
+- Browser-target URLs must use `http://` or `https://` at write time.
+  
+- Health URLs support `http://`, `https://`, and `tcp://host:port`.
+  
+- Probe endpoints are admin-only and restricted by network allowlists.
+  
+- Loopback, link-local, and cloud-metadata addresses are blocked.
+  
+- Redirects are limited and revalidated at every hop.
+  
+- Fetches have timeout and response-size limits.
+  
+- Dangerous URL schemes cannot be stored for future renderers to mishandle.
+  
+- Secrets remain in environment configuration and are not stored in catalog records.
+  
 
-## Backup and restore
+## Configuration
 
-Two independent mechanisms, because the tool lives inside the infrastructure it
-catalogs.
+Deployment configuration is supplied through environment variables. Runtime preferences such as the landing page, panel visibility, health thresholds, notifications, and Proxmox display settings are managed in the Settings screen.
 
-**Nightly database backup** — `ops/backup.sh` runs `pg_dump` inside the `db`
-container (via `docker compose exec`, so it needs no host port, no host
-`pg_dump` and no password), gzips it, verifies the file is non-empty and
-gzip-intact, and retains multiple generations. It writes to `./backups` by
-default; set `BACKUP_DIR` to a mounted share so backups survive the host. The
-cron line is in the script's header.
+The most important settings are:
 
-The dump is gzipped **plain SQL** — restore it with `psql`, never `pg_restore`
-(which reads only pg_dump's custom formats). Into an **empty** database, with
-the app stopped:
+| Variable | Purpose |
+| --- | --- |
+| `SECRET_KEY` | Django signing key. |
+| `POSTGRES_PASSWORD` | PostgreSQL password. |
+| `HOMELABVAULT_ADMIN_TOKEN` | Full administrative access. |
+| `HOMELABVAULT_AGENT_TOKEN` | Optional scoped automation access. |
+| `HOMELABVAULT_AUTH_MODE` | Write policy: `full`, `open-writes`, or `open`. |
+| `WEB_PORT` | Host port for the application. |
+| `PROXMOX_HOST` | Optional Proxmox API endpoint. |
+| `PROXMOX_API_TOKEN` | Optional read-only Proxmox token. |
+| `PROBE_ALLOWED_NETWORKS` | CIDRs the probe and health checker may reach. |
+| `STATIC_EXPORT_DIR` | Host directory for the recovery HTML export. |
+| `HOMELABVAULT_DISCORD_WEBHOOK_URL` | Optional Discord notification webhook. |
+
+See `.env.example` for the complete configuration reference and safe defaults.
+
+## Backup and recovery
+
+`ops/backup.sh` creates verified, compressed PostgreSQL dumps and retains multiple generations. Set `BACKUP_DIR` to a persistent or mounted location if backups must survive loss of the application host.
+
+The backup is plain SQL. Restore it into an empty database with the application stopped:
 
 ```bash
 docker compose stop web worker proxmox-worker
+
+
+
 docker compose exec db psql -U homelabvault -d postgres \
-  -c "DROP DATABASE homelabvault;" -c "CREATE DATABASE homelabvault OWNER homelabvault;"
+  -c "DROP DATABASE homelabvault;" \
+  -c "CREATE DATABASE homelabvault OWNER homelabvault;"
+
+
+
 gunzip -c backups/homelabvault-<timestamp>.sql.gz \
   | docker compose exec -T db psql -U homelabvault -d homelabvault
+
+
+
 docker compose start web worker proxmox-worker
 ```
 
-A backup that has never been restored is an assumption, not a backup — do the
-restore test once.
+A backup that has never been restored is an assumption, not a recovery plan. Test the restore procedure before relying on it.
 
-**Static recovery export** — every catalog change regenerates a single
-dependency-free HTML file under `STATIC_EXPORT_DIR` listing every service name
-and launch URL, with icons inlined as base64. Open it with `file://` when
-Homelab Vault is down; every link in it still works. The export is written
-outside the database transaction and can never block or fail a catalog write.
-If an export attempt fails, the catalog write still succeeds, a stale marker is
-recorded, and the health worker retries on its next cycle.
+The static recovery export is a dependency-free HTML copy of the catalog. It can be opened with `file://` while the application is offline.
 
 ## Monitoring
 
-`GET /api/v1/healthz` answers **503 while any background worker is stalled**,
-200 otherwise — point any uptime monitor at it. Polling it is also what drives
-the app's own stall evaluation, so an external poller arms the internal alerts.
+```text
+GET /api/v1/healthz
+```
 
-`ops/watchdog.sh` is a self-contained cron script that does exactly that from
-outside the containers, and additionally alerts (via the same Discord webhook)
-when the whole stack is unreachable — the one failure the app cannot report
-about itself. Install: one cron line, documented in the script's header.
+The health endpoint returns `503` when a background worker is stalled and `200` otherwise. `ops/watchdog.sh` can poll the endpoint from outside the Compose stack and notify through the configured Discord webhook if the entire application becomes unreachable.
+
+## Local development
+
+The application uses Python 3.13+, Node 22+, and PostgreSQL.
+
+```bash
+python -m venv .venv
+
+. .venv/bin/activate
+
+pip install -r backend/requirements-dev.txt
+
+
+
+cd backend
+
+python manage.py migrate
+
+python manage.py runserver
+```
+
+In another terminal, workers can be started with:
+
+```bash
+python manage.py health_worker
+
+python manage.py proxmox_worker  # optional
+```
+
+Build or run the frontend separately:
+
+```bash
+cd frontend
+
+npm ci
+
+npm run build
+
+# or: npm run dev
+```
+
+Run tests:
+
+```bash
+cd backend && python -m pytest
+
+cd frontend && npm test
+```
+
+The backend test suite requires a reachable PostgreSQL server. There is no SQLite fallback.
+
+## Project status
+
+Homelab Vault is actively developed for real homelab use. The core catalog, API, health workers, optional Proxmox enrichment, recovery export, and backup workflow are in place. Interfaces and integrations may continue to evolve as I need and as the project gains users.
+
+Issues, suggestions, and focused pull requests are welcome.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Homelab Vault is licensed under the [MIT License](LICENSE).
