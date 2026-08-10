@@ -1,6 +1,6 @@
 # Command Center User Guide
 
-**Last Updated**: 2026-08-08
+**Last Updated**: 2026-08-10
 
 ## What it is
 
@@ -108,3 +108,4 @@ showing numbers that have quietly stopped moving.
 ## Related
 
 - [Settings User Guide](SETTINGS_USER_GUIDE.md)
+- [Service Catalog User Guide](CATALOG_USER_GUIDE.md)
