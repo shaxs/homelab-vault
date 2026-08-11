@@ -92,7 +92,7 @@ The default deployment uses Docker Compose:
   
 - **Workers:** asyncio + httpx
   
-- **Packaging:** Docker Compose
+- **Packaging:** Docker Compose, with a prebuilt image on the GitHub Container Registry
   
 
 ## Quick start
@@ -103,17 +103,21 @@ The default deployment uses Docker Compose:
   
 - Docker Compose
   
+- `git`, to fetch the Compose file and environment template
+  
 - A host with persistent storage for PostgreSQL and backups
   
 
+No language runtime or build toolchain is required on the host. The application runs from a prebuilt image that Docker pulls and starts.
+
 ### Start the application
+
+Homelab Vault runs from a prebuilt image, so nothing is compiled on the host. The clone below is only for the Compose file and the environment template:
 
 ```bash
 git clone https://github.com/shaxs/homelab-vault.git
 
 cd homelab-vault
-
-
 
 cp .env.example .env
 ```
@@ -134,6 +138,12 @@ Generate random values with:
 openssl rand -hex 32
 ```
 
+`IMAGE_TAG` selects which published image runs. It defaults to `latest`, the newest release; pin an exact version on anything you rely on, so an upgrade is a change you make rather than one you receive:
+
+```text
+IMAGE_TAG=1.1.0
+```
+
 Prepare the recovery-export directory. The containers write as UID `10001`:
 
 ```bash
@@ -142,7 +152,7 @@ mkdir -p _export
 chown 10001:10001 _export
 ```
 
-Start the stack. This pulls the published image, so no build toolchain is needed on the host:
+Pull the image and start the stack:
 
 ```bash
 docker compose pull
@@ -150,9 +160,7 @@ docker compose pull
 docker compose up -d
 ```
 
-To build from this checkout instead — for development, or on an architecture the published image does not cover — use `docker compose up -d --build`.
-
-The image is published to the GitHub Container Registry as `ghcr.io/shaxs/homelab-vault`. `latest` is the newest release; set `IMAGE_TAG` in `.env` to pin a specific version such as `1.1.0`. See `.env.example`.
+`docker compose pull` fetches the application image from the GitHub Container Registry (`ghcr.io/shaxs/homelab-vault`). The package is public, so no registry login is required, and no build toolchain runs on the host. Database migrations run automatically on first start.
 
 Open:
 
@@ -163,6 +171,20 @@ http://localhost:8000
 A new installation starts with an empty catalog. Add the first service from the web interface or through the API.
 
 Proxmox integration is optional. With `PROXMOX_HOST` unset, the catalog still works normally without polling or location enrichment.
+
+To build the image from this checkout instead — for development, or on an architecture the published image does not cover (it is `linux/amd64`) — use `docker compose up -d --build`.
+
+### Updating
+
+Releases are published as new image tags. To move to one, set `IMAGE_TAG` in `.env` to the version you want — or leave it at `latest` for the newest — then pull and restart:
+
+```bash
+docker compose pull
+
+docker compose up -d
+```
+
+Migrations run automatically on start. Pinning a version is recommended, so an update happens when you choose it. Rolling back across a release that changed the database schema means restoring a backup rather than only changing the tag; the [changelog](CHANGELOG.md) flags breaking changes under their version.
 
 ## API
 
@@ -226,6 +248,7 @@ The most important settings are:
 | `HOMELABVAULT_ADMIN_TOKEN` | Full administrative access. |
 | `HOMELABVAULT_AGENT_TOKEN` | Optional scoped automation access. |
 | `HOMELABVAULT_AUTH_MODE` | Write policy: `full`, `open-writes`, or `open`. |
+| `IMAGE_TAG` | Published image to run; defaults to `latest`. Pin a version such as `1.1.0`. |
 | `WEB_PORT` | Host port for the application. |
 | `PROXMOX_HOST` | Optional Proxmox API endpoint. |
 | `PROXMOX_API_TOKEN` | Optional read-only Proxmox token. |
@@ -233,7 +256,9 @@ The most important settings are:
 | `STATIC_EXPORT_DIR` | Host directory for the recovery HTML export. |
 | `HOMELABVAULT_DISCORD_WEBHOOK_URL` | Optional Discord notification webhook. |
 
-See `.env.example` for the complete configuration reference and safe defaults.
+**Behind an HTTPS reverse proxy.** The shipped defaults are correct for plain HTTP on a trusted network. If you terminate HTTPS at a reverse proxy, set `CSRF_TRUSTED_ORIGINS` to the external origin (for example `https://vault.example.com`) and set `SESSION_COOKIE_SECURE` and `CSRF_COOKIE_SECURE` to `True`. Otherwise the browser silently drops the session cookie and every UI write fails looking like a CSRF error. `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, and a tightened `ALLOWED_HOSTS` are available for further hardening.
+
+`.env.example` is the complete configuration reference — every variable, its default, and the reasoning — including the health-check tuning, probe and SSRF limits, and session policy not listed above.
 
 ## Backup and recovery
 
