@@ -142,11 +142,17 @@ mkdir -p _export
 chown 10001:10001 _export
 ```
 
-Start the stack:
+Start the stack. This pulls the published image, so no build toolchain is needed on the host:
 
 ```bash
-docker compose up --build -d
+docker compose pull
+
+docker compose up -d
 ```
+
+To build from this checkout instead — for development, or on an architecture the published image does not cover — use `docker compose up -d --build`.
+
+The image is published to the GitHub Container Registry as `ghcr.io/shaxs/homelab-vault`. `latest` is the newest release; set `IMAGE_TAG` in `.env` to pin a specific version such as `1.1.0`. See `.env.example`.
 
 Open:
 

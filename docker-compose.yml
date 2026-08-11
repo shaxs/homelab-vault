@@ -16,6 +16,21 @@
 # Settings shared by web and worker live in the anchor below so the two cannot
 # drift apart — a health check that validates URLs differently from the probe
 # would be a genuinely confusing bug.
+#
+# IMAGE vs BUILD. The three app services carry both `image:` and `build: .`, and
+# which one is used is a property of the command you run, not of this file:
+#
+#   docker compose pull && docker compose up -d   pulls the published image and
+#                                                 runs it. No build toolchain is
+#                                                 needed on the host. This is
+#                                                 how a server should deploy.
+#   docker compose up -d --build                  builds from this checkout,
+#                                                 tagging the result with the
+#                                                 same name. This is local dev.
+#
+# `IMAGE_TAG` selects what a pull gets — pin it in `.env` on a real deployment so
+# an upgrade is a value you changed, not whatever happened to be newest. The tag
+# scheme is documented in the publish job of `.github/workflows/ci.yml`.
 
 x-app-env: &app-env
   DATABASE_URL: postgres://${POSTGRES_USER:-homelabvault}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-homelabvault}
@@ -95,6 +110,7 @@ services:
       retries: 10
 
   web:
+    image: ghcr.io/shaxs/homelab-vault:${IMAGE_TAG:-latest}
     build: .
     restart: unless-stopped
     depends_on:
@@ -147,6 +163,9 @@ services:
       - ${STATIC_EXPORT_DIR:-./_export}:/export
 
   worker:
+    # Same image as web — one artifact, three commands. Compose builds or pulls
+    # it once and all three services share it.
+    image: ghcr.io/shaxs/homelab-vault:${IMAGE_TAG:-latest}
     build: .
     restart: unless-stopped
     depends_on:
@@ -177,6 +196,7 @@ services:
   # no volumes — it writes only to Postgres, and the snapshot lives there
   # precisely so `web` can serve it from another container.
   proxmox-worker:
+    image: ghcr.io/shaxs/homelab-vault:${IMAGE_TAG:-latest}
     build: .
     restart: unless-stopped
     depends_on:

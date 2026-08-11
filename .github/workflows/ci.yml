@@ -4,11 +4,18 @@
 # container build smoke (audit S15). Mark backend/frontend/secrets/container as
 # required checks on the default branch — the workflow can only run, not require
 # itself.
+#
+# It also PUBLISHES the runtime image to GHCR, so a deploy pulls a tested
+# artifact instead of building on the server. See the `publish` job at the foot
+# for the tag scheme; `ops/DEPLOY.md` documents the promotion flow.
 name: CI
 
 on:
   push:
+    # Tags as well as main: a `v*` push is what publishes a promotable release
+    # image, and without this line that push would run no workflow at all.
     branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -136,3 +143,65 @@ jobs:
       - run: |
           printf 'SECRET_KEY=x\nPOSTGRES_PASSWORD=x\nHOMELABVAULT_ADMIN_TOKEN=x\n' > .env
           docker compose config --quiet
+
+  publish:
+    name: Publish image to GHCR
+    # Never on a pull_request: a fork's PR must not be able to publish, and an
+    # unmerged branch has no business producing a pullable artifact.
+    if: github.event_name == 'push'
+    # Everything that can say "this build is broken" runs first. `container`
+    # is included even though this job rebuilds: it is the required check, and
+    # its compose-config smoke is not repeated here.
+    needs: [backend, frontend, audit, secrets, container]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # The one extra grant, scoped to this job rather than the workflow. The
+      # built-in token can write packages in its own repo, so there is no PAT
+      # to create, store or rotate.
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tag scheme, and what each one is for:
+      #   main            — every push to the default branch. What the staging
+      #                     LXC follows, so it gets changes the moment they land.
+      #   sha-<short>     — immutable, every push. The rollback handle: it names
+      #                     exactly one commit and is never reassigned.
+      #   1.2.3, 1.2      — a `v1.2.3` tag push only. What production pins.
+      #   latest          — a version tag only (`latest=auto` does this); it is
+      #                     deliberately NOT moved by a plain main push, so it
+      #                     always means "newest release", never "newest commit".
+      # metadata-action also emits the standard OCI labels, including
+      # org.opencontainers.image.revision — the commit SHA, readable back out of
+      # any running image with `docker image inspect`, which is what makes
+      # "what is actually deployed?" answerable without guessing from timestamps.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          flavor: latest=auto
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # amd64 only — every host running this is x86. Adding arm64 here means
+          # QEMU emulation and a far longer build; do it when a real arm host
+          # needs it, not speculatively.
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
