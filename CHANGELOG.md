@@ -38,6 +38,68 @@ things — see the `/api/v1/` entry below, which is exactly that case.
 
 ---
 
+## [1.1.0] — 2026-08-10
+
+Phone and tablet support, and a deploy that pulls a tested image instead of
+building on your server.
+
+Nothing here is breaking by the convention above: no API field, endpoint or
+response shape changes, and the one new environment variable (`IMAGE_TAG`) is
+optional with a working default.
+
+### Added
+
+- **Layouts for phones and tablets.** The app was desktop-only; it is now usable
+  on a phone.
+
+  - Below 1100px the sidebar becomes a slide-in drawer opened by a **☰** in the
+    top bar. It holds exactly what it holds on desktop — navigation, saved
+    views, categories, worker status, Settings — and closes on a navigation, a
+    tap outside, Escape, or any dialog opening.
+  - Below 720px each catalog row becomes a card: icon, name and status pill on
+    the first line, category and location beneath, tags below that, and a
+    full-width **Open ↗**. Nothing is dropped, and every control keeps the
+    behaviour it has on desktop — the status pill still re-checks, the category
+    and tag chips still filter. Tablets keep the full seven-column table.
+  - Dashboard node rows become labelled cards on a phone, and the three summary
+    cards stack.
+  - Modals become full-width sheets anchored to the top of the screen, so an
+    on-screen keyboard cannot cover the fields, and form inputs are large enough
+    that iOS Safari no longer zooms in when one is focused.
+  - Edit pencils on saved views, categories and tags are always visible on a
+    touch screen instead of appearing on hover, and tap targets on the launch
+    path are sized for a thumb.
+
+  The theme toggle leaves the top bar on phones; **Settings → Appearance** has
+  the same control.
+
+- **A published container image**, at `ghcr.io/shaxs/homelab-vault`. CI builds
+  and publishes it, so a deploy is `docker compose pull && docker compose up -d`
+  and needs no build toolchain on the host. The package is public; pulls need no
+  credentials.
+
+  `IMAGE_TAG` in `.env` selects what you run. `latest` is the newest release and
+  never moves on a plain commit; `1.1.0` and `1.1` name this release; `main`
+  tracks the default branch; `sha-<short>` names one immutable commit. Pin a
+  version on anything you care about, so an upgrade is a value you changed.
+
+  The image carries standard OCI labels, so the commit a running container was
+  built from is readable with
+  `docker inspect <image> --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'`.
+
+### Fixed
+
+- **Node details are reachable below 1100px.** The Command Center's detail panel
+  was hidden entirely at narrower widths, so on a tablet or phone there was no
+  way to see a node's or service's details at all. It now slides in over the
+  table and closes with **✕**.
+
+### Changed
+
+- The compose file names the published image while keeping its build definition,
+  so `docker compose up -d --build` still builds from a checkout — for
+  development, or as the fallback if the registry is unreachable.
+
 ## [1.0.0] — 2026-08-10
 
 First public release.
