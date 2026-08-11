@@ -40,6 +40,7 @@ import {
   tokenize,
 } from './search.js'
 import { useTheme } from './theme.js'
+import { useMediaQuery } from './viewport.js'
 
 const theme = useTheme()
 
@@ -77,6 +78,41 @@ watch([savingView, bulkTagOpen, bulkCatOpen], () => {
 const banner = ref('')
 /** { kind: 'category' | 'tag', name } while the rename dialog is open. */
 const editingTaxonomy = ref(null)
+
+/**
+ * Below the desktop breakpoint the sidebar is an overlay drawer, opened by the
+ * topbar's ☰. The markup is the same <aside> desktop shows — one nav, two
+ * presentations — so saved views and categories need no phone-only surface.
+ */
+const navOpen = ref(false)
+/**
+ * Any navigation dismisses the drawer — it exists to get you somewhere. This
+ * single watcher covers same-screen taps too, because `navigate()` reassigns
+ * `route.value` with a fresh object even when the path is unchanged
+ * (router.js:82) — App.test.js pins that: if navigate() ever grows a same-path
+ * early return, the "already on" drawer test goes red and points here.
+ */
+watch(route, () => {
+  navOpen.value = false
+})
+/**
+ * A drawer opened on a narrow window must not linger as stale state: without
+ * this, widening past the breakpoint and narrowing again would pop the drawer
+ * back open unasked. jsdom reports no match, so tests run desktop-mode.
+ */
+const belowDesktop = useMediaQuery('(max-width: 1099.98px)')
+watch(belowDesktop, (below) => {
+  if (!below) navOpen.value = false
+})
+/**
+ * Any modal opening closes the drawer. This is what keeps Escape unambiguous:
+ * BaseModal owns Escape through its module-level stack, and the App-level
+ * handler below only ever sees Escape when no modal is up — so the two never
+ * race for the same keypress.
+ */
+watch([savingView, editingTaxonomy, paletteOpen, addOpen, bulkTagOpen, bulkCatOpen], (flags) => {
+  if (flags.some(Boolean)) navOpen.value = false
+})
 
 async function onTaxonomyChanged(message) {
   showBanner(message)
@@ -190,6 +226,11 @@ function onKey(event) {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault()
     paletteOpen.value = true
+  }
+  // Safe to take unconditionally: any open modal already closed the drawer
+  // (see the watcher above), so this never competes with BaseModal's stack.
+  if (event.key === 'Escape' && navOpen.value) {
+    navOpen.value = false
   }
 }
 
@@ -365,8 +406,14 @@ async function onGateAuthenticated() {
 </script>
 
 <template>
-  <div class="app">
-    <!-- Sidebar: primary nav, then saved views and categories (§5) -->
+  <div class="app" :class="{ 'nav-open': navOpen }">
+    <!-- Below the desktop breakpoint the backdrop sits between the content and
+         the sidebar-as-drawer; tapping it is the touch equivalent of Escape. -->
+    <div v-if="navOpen" class="nav-backdrop" @click="navOpen = false" />
+
+    <!-- Sidebar: primary nav, then saved views and categories (§5).
+         Same markup at every width — desktop shows it as a fixed rail, narrow
+         viewports slide it in as an overlay drawer (styles.css, responsive). -->
     <aside class="sidebar">
       <!-- Home: whichever screen the operator chose as their landing page, not
            a hardcoded catalog. Someone who set the dashboard as home means it. -->
@@ -503,6 +550,17 @@ async function onGateAuthenticated() {
 
     <div class="main">
       <header class="topbar">
+        <!-- Rendered at every width, shown by CSS only below the desktop
+             breakpoint — keeping it in the DOM is what lets the responsive
+             layer stay pure CSS. -->
+        <button
+          class="nav-toggle"
+          aria-label="Open navigation"
+          :aria-expanded="String(navOpen)"
+          @click="navOpen = !navOpen"
+        >
+          ☰
+        </button>
         <button class="palette-trigger" @click="paletteOpen = true">
           <span class="search-glyph">⌕</span>
           <span class="palette-trigger-label">Jump to a service…</span>
@@ -529,7 +587,7 @@ async function onGateAuthenticated() {
             "
             @click="navigate('settings')"
           >
-            auth mode: {{ state.authMode }}
+            <span class="auth-chip-prefix">auth mode: </span>{{ state.authMode }}
           </button>
           <div class="seg">
             <button :class="{ on: theme === 'light' }" @click="theme = 'light'">Light</button>

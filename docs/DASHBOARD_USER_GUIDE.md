@@ -87,6 +87,20 @@ the action is left out rather than pointing at a dead link.
 If a service's URL is not `http://` or `https://` it is shown but not made
 clickable, and no Open external action appears.
 
+## On a phone or tablet
+
+Below desktop width the details panel slides in from the right as an overlay
+instead of sitting beside the table; **✕** closes it. Nothing behind it is
+blocked — the page stays scrollable while it is open.
+
+On a phone each node row becomes a card: the node's name and online/offline
+pill first, then labelled facts — **up** (uptime), **cpu** and **ram** with
+their meter bars full width, **load**, **disk** and **pve** (version).
+
+The three summary cards (Cluster health, Compute, Storage) stack vertically on
+narrower screens, and the status summary tiles wrap to fit — they remain
+tappable filters.
+
 ## When Proxmox is not set up
 
 With no Proxmox credentials in `.env`, the Proxmox panels do not appear at all

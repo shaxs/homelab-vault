@@ -456,3 +456,90 @@ describe('write-path error handling (audit S11)', () => {
     wrapper.unmount()
   })
 })
+
+describe('the nav drawer (responsive shell)', () => {
+  // Below the desktop breakpoint the sidebar is an overlay drawer opened by
+  // the topbar's ☰. jsdom has no layout, so these exercise the width-agnostic
+  // state machine; the presentation itself is CSS and is verified on devices.
+  const VIEWS = [{ id: 'v1', name: 'Unhealthy', query: 'state:!up', position: 0 }]
+
+  it('renders the ☰ in the topbar and starts closed', async () => {
+    const wrapper = await openAt('/catalog')
+    const toggle = wrapper.find('.topbar .nav-toggle')
+    expect(toggle.exists()).toBe(true)
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('.app').classes()).not.toContain('nav-open')
+    expect(wrapper.find('.nav-backdrop').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('opens on ☰ — class, backdrop and aria-expanded all agree', async () => {
+    const wrapper = await openAt('/catalog')
+    await wrapper.find('.nav-toggle').trigger('click')
+    expect(wrapper.find('.app').classes()).toContain('nav-open')
+    expect(wrapper.find('.nav-backdrop').exists()).toBe(true)
+    expect(wrapper.find('.nav-toggle').attributes('aria-expanded')).toBe('true')
+    wrapper.unmount()
+  })
+
+  it('closes on a backdrop tap', async () => {
+    const wrapper = await openAt('/catalog')
+    await wrapper.find('.nav-toggle').trigger('click')
+    await wrapper.find('.nav-backdrop').trigger('click')
+    expect(wrapper.find('.app').classes()).not.toContain('nav-open')
+    expect(wrapper.find('.nav-backdrop').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('closes on Escape', async () => {
+    const wrapper = await openAt('/catalog')
+    await wrapper.find('.nav-toggle').trigger('click')
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.app').classes()).not.toContain('nav-open')
+    wrapper.unmount()
+  })
+
+  it('closes when navigating — to a different screen', async () => {
+    const wrapper = await openAt('/catalog')
+    await wrapper.find('.nav-toggle').trigger('click')
+    const dashboard = wrapper
+      .findAll('.side-nav .nav-item')
+      .find((el) => el.text().includes('Command Center'))
+    await dashboard.trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.app').classes()).not.toContain('nav-open')
+    wrapper.unmount()
+  })
+
+  it('closes when navigating to the screen you are already on', async () => {
+    // Works because navigate() reassigns route.value with a fresh object even
+    // for an unchanged path (router.js), so the route watcher fires. This test
+    // pins that dependency: a same-path early return in navigate() breaks the
+    // drawer here first.
+    const wrapper = await openAt('/catalog')
+    await wrapper.find('.nav-toggle').trigger('click')
+    const catalog = wrapper
+      .findAll('.side-nav .nav-item')
+      .find((el) => el.text().includes('Catalog'))
+    await catalog.trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.app').classes()).not.toContain('nav-open')
+    wrapper.unmount()
+  })
+
+  it('closes the moment a modal opens from inside it', async () => {
+    // This is what keeps Escape unambiguous: BaseModal's stack owns Escape
+    // while any modal is up, so the drawer must never still be open behind one.
+    const wrapper = await openAt('/catalog', { views: VIEWS })
+    await wrapper.find('.nav-toggle').trigger('click')
+    const pencil = wrapper
+      .findAll('.side-edit')
+      .find((b) => b.attributes('title')?.includes('Unhealthy'))
+    await pencil.trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.modal').exists()).toBe(true)
+    expect(wrapper.find('.app').classes()).not.toContain('nav-open')
+    wrapper.unmount()
+  })
+})

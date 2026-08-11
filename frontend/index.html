@@ -2,7 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- viewport-fit=cover opts into the full screen on notched phones, which
+         is what makes env(safe-area-inset-*) non-zero where styles.css uses it. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Homelab Vault</title>
     <!-- Inline so the browser stops requesting /favicon.ico, which Django has no
          route for. Also keeps the app free of external asset fetches. -->

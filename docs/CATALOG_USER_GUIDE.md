@@ -107,6 +107,32 @@ Row height, icon and text size follow **Settings → Appearance → Catalog
 density** (Compact or Comfortable), which is server-wide — every browser sees
 the same catalog.
 
+## On a phone or tablet
+
+On tablets and phones the sidebar is hidden to give the catalog the width. Tap
+the **☰** at the top left to slide it in — it holds everything it holds on
+desktop: navigation, saved views, categories, worker status, Settings. It
+closes when you tap anything that navigates, tap outside it, or open a dialog.
+
+On a phone the table becomes a stack of cards. Each card shows the service's
+icon, name and status pill on the first line, category and location beneath,
+tags beneath that, and a full-width **Open ↗** button. Same data, nothing lost
+— and on a tablet the full seven-column table remains.
+
+Everything clickable on desktop is tappable on the card: the status pill still
+re-checks the service, the category chip and tags still filter, the name still
+opens the record. Row checkboxes and the bulk bar work as they do on desktop.
+
+Three phone-specific things to know:
+
+- The **✎** pencils on saved views, categories and tags appear on hover on
+  desktop; on a touch screen they are simply always visible.
+- The **Light/Dark toggle** leaves the top bar on phones — it lives at
+  **Settings → Appearance**. The auth-mode chip stays, showing just the mode
+  word.
+- There is no **⌘K** without a keyboard; tapping the search field in the top
+  bar opens the same palette.
+
 ## What the statuses mean
 
 | Status | Meaning | What to do |

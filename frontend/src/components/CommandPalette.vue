@@ -78,7 +78,9 @@ function onEnter(event) {
       @keydown.enter.prevent="onEnter"
       @keydown.esc.prevent.stop="emit('close')"
     />
-    <div style="overflow: auto; max-height: 50vh">
+    <!-- Both units on purpose: dvh tracks the real viewport under mobile
+         browser chrome; vh is the fallback where dvh is unknown. -->
+    <div style="overflow: auto; max-height: 50vh; max-height: 50dvh">
       <div v-if="services.length" class="palette-section">Services</div>
       <button
         v-for="(row, index) in rows"

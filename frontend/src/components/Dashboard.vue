@@ -388,6 +388,11 @@ function openService(row) {
                 <div class="col-head">Storage</div>
                 <div class="col-head">Version</div>
               </div>
+              <!-- The phone layout labels these cells with :nth-child ::before
+                   rules (styles.css, responsive) because uptime/load/storage/
+                   version share one class. That coupling means the eight cells
+                   below must stay unconditional and in this order — if one ever
+                   becomes v-if'd, the phone labels shift onto the wrong cells. -->
               <button
                 v-for="node in nodes"
                 :key="node.name"

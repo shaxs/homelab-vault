@@ -1,6 +1,6 @@
 # Settings and Access User Guide
 
-**Last Updated**: 2026-08-08
+**Last Updated**: 2026-08-10
 
 ## Overview
 
@@ -54,7 +54,9 @@ on the server.
 **Theme** — Light or Dark, marked `THIS DEVICE`. It lives in this browser only.
 It is not saved to the server, does not follow you to another machine, and
 nobody else sees your choice. Deliberate: it is a display preference, not
-catalog data.
+catalog data. On a phone the top bar hides its Light/Dark toggle, so this row
+is where you change theme there. Settings rows stack on narrow screens — the
+control drops below its label — but behave identically.
 
 **Landing page** — what loads when you visit the root of the site: **Service
 Catalog** or **Command Center**. Unlike Theme, this one is server-wide. Either

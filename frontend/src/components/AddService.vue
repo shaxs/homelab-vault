@@ -546,13 +546,24 @@ async function runBulk() {
                   {{ row.url }}
                 </template>
               </div>
+              <!-- The placeholders/labels repeat the head row's column names
+                   because the phone layout hides that row (styles.css,
+                   responsive) — without them the two inputs are anonymous. -->
               <input
                 v-model="row.slug"
                 class="mono bulk-input"
                 :class="{ bad: rowWarning(row) && !catalogSlugs.has(row.slug) }"
                 :disabled="row.probing"
+                placeholder="slug"
+                aria-label="Slug"
               />
-              <input v-model="row.name" class="bulk-input" :disabled="row.probing" />
+              <input
+                v-model="row.name"
+                class="bulk-input"
+                :disabled="row.probing"
+                placeholder="name"
+                aria-label="Name"
+              />
               <button
                 class="clear-btn"
                 title="Drop this row"

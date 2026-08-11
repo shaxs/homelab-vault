@@ -191,7 +191,9 @@ function initials(name) {
           <div class="record-url">{{ service.launch_url }}</div>
         </div>
       </div>
-      <div style="margin-left: auto; display: flex; gap: 8px">
+      <!-- A class, not the inline style it used to be: the phone layout has to
+           re-flow this row, and media queries cannot override inline styles. -->
+      <div class="record-actions">
         <button
           class="btn-ghost"
           :disabled="rechecking || !service.health_enabled"
