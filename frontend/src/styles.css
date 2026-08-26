@@ -873,13 +873,49 @@ textarea::placeholder {
    is load-bearing — without it a flex child refuses to shrink below its content
    and the whole column scrolls instead, which is the bug this replaced. */
 .settings-screen { display: flex; flex-direction: column; overflow: hidden; }
-.settings-screen .page-head { flex: none; }
+/* Top-aligned, not the default flex-end: the counts line under the title wraps
+   wide here, and a bottom-aligned Back button rode its baseline into the banner
+   below (operator finding, 2026-08-12). */
+.settings-screen .page-head { flex: none; align-items: flex-start; }
+/* The notices (error, and the open-writes warning banner) are flex children of
+   this squeezing column too — without flex:none they compress and collide with
+   the header the first time one renders. The banner first appeared the day the
+   operator switched auth modes, which is why this guard arrived late. The
+   margin-top separates it from the page-head's counts line. */
+.settings-screen .notice { flex: none; margin-top: 12px; }
 /* The right padding is the gap between the cards and this scroller's own
    scrollbar — without it the bar sits flush against the card edges
    (validation 2026-08-07, finding 4). Every other scroller inherits a gap
    from `.content`'s padding; this one owns its scrolling, so it pays for
    its own. */
 .settings-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 10px 8px 0; }
+
+/* --- Settings section rail (TN-SET) --------------------------------------- */
+/* One section on screen at a time, picked by /settings/{section}. Desktop: a
+   sticky left sub-rail (the settings convention); phone: the SAME element as a
+   horizontal chip strip — the adapter-bar behaviour, re-templated by CSS alone.
+   Colours are tokens, so both themes follow. */
+.settings-scroll { display: flex; gap: 18px; align-items: flex-start; }
+.settings-rail {
+  position: sticky; top: 0; flex: 0 0 188px;
+  display: flex; flex-direction: column; gap: 3px; padding: 16px 0 8px;
+}
+.settings-rail-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 14px; border-radius: 10px; cursor: pointer; text-align: left;
+  border: 1px solid transparent; background: none;
+  font: 600 13px 'Manrope', sans-serif; color: var(--txt2);
+}
+.settings-rail-item:hover { color: var(--txt); border-color: var(--accentLine); }
+.settings-rail-item.active {
+  background: var(--accentSoft); border-color: var(--accentLine); color: var(--txt);
+}
+.settings-rail-label { white-space: nowrap; }
+.settings-rail-dirty {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--warn);
+  margin-left: auto; flex: 0 0 auto;
+}
+.settings-body { flex: 1; min-width: 0; }
 
 .settings-savebar {
   flex: none; z-index: 5;
@@ -1006,10 +1042,78 @@ textarea::placeholder {
 .nodes-table { margin-top: 16px; }
 .nodes-table .dash-card-head { padding: 16px 22px 4px; margin: 0; }
 .row.node-row { grid-template-columns: 1.3fr 0.8fr 1fr 0.9fr 0.9fr 0.7fr 1.3fr 0.7fr; }
-.node-name { font: 600 12.5px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.node-cell { font: 500 12px var(--mono); color: var(--txt2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* `min-width: 0` is load-bearing, not cosmetic: a grid cell defaults to
+   `min-width: auto`, which refuses to shrink below its content's size, so
+   `text-overflow: ellipsis` never fires on a long value (it overflows into the
+   next column instead). Harmless where content is short (Proxmox node names);
+   required where it is long (TrueNAS replication-task names). */
+.node-name { font: 600 12.5px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.node-cell { font: 500 12px var(--mono); color: var(--txt2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .node-cell.fixed { width: 34px; flex: none; color: var(--txt); }
 .node-meter { display: flex; align-items: center; gap: 8px; min-width: 0; }
+
+/* --- Adapter bar (TN4) --------------------------------------------------- */
+/* The pill strip under the page head. Overview + one pill per configured
+   provider. It scrolls horizontally when it overflows (content-scoped, never
+   the hamburger drawer), so the narrow-width behaviour is the same rule at
+   every width rather than a breakpoint. Colours are tokens, so both themes
+   follow automatically. */
+.adapter-bar {
+  display: flex; gap: 8px; flex-wrap: nowrap; overflow-x: auto;
+  margin: 16px 0 4px; padding-bottom: 4px; scrollbar-width: thin;
+}
+.adapter-pill {
+  display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto;
+  padding: 8px 15px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel2);
+  font: 700 12.5px 'Manrope', sans-serif; color: var(--txt2); white-space: nowrap;
+}
+.adapter-pill:hover { border-color: var(--accentLine); }
+.adapter-pill.active {
+  border-color: var(--accentLine); background: var(--accentSoft); color: var(--txt);
+}
+.adapter-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--txt3);
+}
+.adapter-dot.dot-ok { background: var(--ok); }
+.adapter-dot.dot-warn { background: var(--warn); }
+.adapter-dot.dot-err { background: var(--err); }
+
+/* Overview drill-in tiles — a dash-card that is itself a button into a section. */
+.ov-card { cursor: pointer; }
+.ov-card:hover { border-color: var(--accentLine); }
+.ov-open {
+  margin-top: 14px; font: 700 11.5px 'Manrope', sans-serif; color: var(--accent);
+}
+
+/* --- TrueNAS section (TN4) ----------------------------------------------- */
+.tn-head { display: flex; align-items: center; gap: 12px; margin: 4px 0 12px; }
+.tn-host { color: var(--txt3); font-weight: 600; }
+
+/* Tabbed detail table — reuses .table/.row; the tabs sit where the nodes
+   table's card head sits. */
+.dash-tabs {
+  display: flex; gap: 4px; padding: 12px 16px 0; overflow-x: auto; scrollbar-width: thin;
+}
+.dash-tab {
+  flex: 0 0 auto; padding: 8px 14px 10px; cursor: pointer; background: none; border: 0;
+  border-bottom: 2px solid transparent; color: var(--txt2);
+  font: 700 12.5px 'Manrope', sans-serif; white-space: nowrap;
+}
+.dash-tab:hover { color: var(--txt); }
+.dash-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.truenas-table { margin-top: 16px; }
+.row.tn-pool-row { grid-template-columns: 1.2fr 0.9fr 1.3fr 0.7fr 1fr; }
+.row.tn-disk-row { grid-template-columns: 1fr 1.3fr 0.7fr 1fr 0.8fr 0.7fr; }
+/* TASK gets the lion's share — replication names are long paths — and the three
+   short trailing columns are tightened so the row does not leave a wide gap. */
+.row.tn-backup-row { grid-template-columns: 2.4fr 0.8fr 0.8fr 0.9fr; }
+.row.tn-alert-row { grid-template-columns: 0.7fr 1.6fr 0.8fr; }
+.tn-alert-msg {
+  font: 600 12.5px 'Manrope', sans-serif; color: var(--txt); min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 /* --- Detail drawer (§7d) -------------------------------------------------- */
 /* A side panel, not a modal: it sits beside the table it was opened from, so
@@ -1242,8 +1346,8 @@ button { touch-action: manipulation; }
      tests green. :not(.node-row) matters: the dashboard's nodes table shares
      .table/.row.body and has its own card recipe below. */
   .table .row.head { display: none; }
-  .table .row.body:not(.node-row),
-  .table.density-comfortable .row.body:not(.node-row) {
+  .table .row.body:not(.node-row):not(.tn-row),
+  .table.density-comfortable .row.body:not(.node-row):not(.tn-row) {
     grid-template-columns: 28px auto minmax(0, 1fr) auto;
     grid-template-areas:
       'check svc  svc  status'
@@ -1293,6 +1397,42 @@ button { touch-action: manipulation; }
   .node-row.body > :nth-child(6)::before { content: 'load'; }
   .node-row.body > :nth-child(7)::before { content: 'disk'; }
   .node-row.body > :nth-child(8)::before { content: 'pve'; }
+
+  /* TrueNAS tables (TN4) reflow to per-row cards on phone, like the nodes table
+     above — NO horizontal scroll. Each row becomes a wrapping flex card: the
+     primary identifier leads, the remaining cells get an uppercase ::before
+     label. The head row is hidden by the generic `.table .row.head` rule, and
+     `.tn-row` keeps these out of the catalog card recipe, so this is the only
+     card treatment they get. Labels are per-table because :nth-child indices
+     differ; the cells below must stay unconditional and in order (same coupling
+     the nodes row carries — see Dashboard.vue). */
+  .truenas-table .row.body {
+    display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
+    padding: 14px 16px; min-width: 0;
+  }
+  .truenas-table .row.body > .node-name,
+  .truenas-table .row.body > .tn-alert-msg { flex: 1 1 auto; font-size: 13.5px; }
+  .truenas-table .row.body > .node-cell::before {
+    content: ''; color: var(--txt3); font: 700 9.5px 'Manrope', sans-serif;
+    text-transform: uppercase; letter-spacing: 0.06em; margin-right: 5px;
+  }
+  /* Pools: name · status pill · cap · used · scrub */
+  .tn-pool-row.body > :nth-child(3)::before { content: 'cap'; }
+  .tn-pool-row.body > :nth-child(4)::before { content: 'used'; }
+  .tn-pool-row.body > :nth-child(5)::before { content: 'scrub'; }
+  /* Disks: name · model · type · pool · smart · temp */
+  .tn-disk-row.body > :nth-child(2)::before { content: 'model'; }
+  .tn-disk-row.body > :nth-child(3)::before { content: 'type'; }
+  .tn-disk-row.body > :nth-child(4)::before { content: 'pool'; }
+  .tn-disk-row.body > :nth-child(5)::before { content: 'smart'; }
+  .tn-disk-row.body > :nth-child(6)::before { content: 'temp'; }
+  /* Backups: task (own line) · kind · state · run */
+  .tn-backup-row.body > .node-name { flex: 1 1 100%; }
+  .tn-backup-row.body > :nth-child(2)::before { content: 'kind'; }
+  .tn-backup-row.body > :nth-child(3)::before { content: 'state'; }
+  .tn-backup-row.body > :nth-child(4)::before { content: 'run'; }
+  /* Alerts: level pill · category · raised */
+  .tn-alert-row.body > :nth-child(3)::before { content: 'raised'; }
 
   .dash-main { padding: 16px 14px 28px; }
   .stat-tile { flex: 1 1 calc(33.3% - 8px); min-height: 44px; }
@@ -1359,4 +1499,17 @@ button { touch-action: manipulation; }
     flex-wrap: wrap; row-gap: 8px;
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
+
+  /* TN-SET: the section rail becomes a horizontal chip strip on phone — the
+     adapter-bar behaviour: no-wrap, sideways scroll, never a hidden section.
+     Same element, re-templated by CSS alone. */
+  .settings-scroll { display: block; }
+  .settings-rail {
+    position: static; flex-direction: row; flex-wrap: nowrap;
+    overflow-x: auto; scrollbar-width: thin;
+    gap: 6px; padding: 12px 0 4px;
+  }
+  .settings-rail-item { flex: 0 0 auto; border-color: var(--line); }
+  .settings-rail-item.active { border-color: var(--accentLine); }
+  .settings-rail-dirty { margin-left: 2px; }
 }

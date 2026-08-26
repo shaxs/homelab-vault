@@ -90,3 +90,35 @@ describe('viewport heights are dvh with a vh fallback', () => {
     expect(modal).toContain('max-height: calc(100dvh - 160px)')
   })
 })
+
+describe('the settings rail scrolls on phone, it does not hide (TN-SET)', () => {
+  it('carries a no-wrap sideways-scroll strip rule for phone', () => {
+    // Desktop is the sticky left sub-rail; the phone re-template must be the
+    // adapter-bar behaviour (scroll, never wrap, never a hidden section). The
+    // strip rule is the one carrying overflow-x — assert it exists and does
+    // not wrap, so a future edit cannot quietly turn sections unreachable.
+    const rules = [...CSS.matchAll(/\.settings-rail\s*\{([^}]*)\}/g)].map((m) => m[1])
+    expect(rules.length, '.settings-rail rules missing').toBeGreaterThan(1)
+    const strip = rules.find((rule) => /overflow-x:\s*auto/.test(rule))
+    expect(strip, 'no .settings-rail rule scrolls sideways').toBeTruthy()
+    expect(strip).toMatch(/flex-wrap:\s*nowrap/)
+  })
+})
+
+describe('the adapter bar scrolls, it does not hide (TN4)', () => {
+  function block(selector) {
+    const start = CSS.indexOf(selector)
+    expect(start, `${selector} rule missing from styles.css`).toBeGreaterThan(-1)
+    return CSS.slice(start, CSS.indexOf('}', start))
+  }
+
+  it('.adapter-bar is a no-wrap, horizontally scrolling strip at every width', () => {
+    // The TN4 ruling: on narrow widths the pill strip scrolls horizontally
+    // (content-scoped), it is NOT folded into the hamburger drawer. Encoding it
+    // in the base rule — not a breakpoint — is what makes that true at every
+    // width. A future edit that lets it wrap or clip trips this.
+    const bar = block('.adapter-bar {')
+    expect(bar).toContain('overflow-x: auto')
+    expect(bar).toContain('flex-wrap: nowrap')
+  })
+})

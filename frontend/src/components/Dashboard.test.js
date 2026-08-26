@@ -1,7 +1,7 @@
 /**
- * The Command Center — v1 §8, §7d.
+ * The Command Center — v1 §8, §7d; adapter bar TN4.
  *
- * Two things are worth asserting from this side, and neither is "the numbers
+ * The invariants worth asserting from this side, none of them "the numbers
  * render":
  *
  * 1. **The panel takes its data from one endpoint.** §8 warns that a panel
@@ -10,14 +10,23 @@
  *    fills a gap from somewhere else.
  * 2. **The drawer's actions are a list** (§7d, §12). Proven from both ends: a
  *    service has one, a node has none, and the empty case still renders.
+ * 3. **The adapter bar routes, and the section renders only what the schema
+ *    published.** The TrueNAS alert row shows the coarsened category, never a
+ *    raw message — the payload does not even carry one.
+ *
+ * The router is mocked so a pill/tile click is asserted as a `navigate(...)`
+ * call; real route resolution is `router.test.js`.
  */
 
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { api } from '../api.js'
+import { navigate } from '../router.js'
 import { state } from '../store.js'
 import Dashboard from './Dashboard.vue'
+
+vi.mock('../router.js', () => ({ navigate: vi.fn() }))
 
 const NODES = [
   {
@@ -84,26 +93,94 @@ const SUMMARY = {
   attention_total: 2,
 }
 
+const TN_SYSTEM = {
+  version: 'TrueNAS-SCALE-24.10.1',
+  hostname: 'truenas',
+  uptime_s: 864000,
+  mem_used_bytes: null,
+  mem_total_bytes: 64 * 1024 ** 3,
+  mem_pct: null,
+  load_avg: 0.52,
+  cores: 12,
+}
+
+const TN_POOLS = [
+  {
+    name: 'tank', status: 'ONLINE', healthy: true,
+    used_bytes: 6 * 1024 ** 4, total_bytes: 10 * 1024 ** 4, free_bytes: 4 * 1024 ** 4,
+    used_pct: 60.0, scan_function: '', scan_state: '', scan_percentage: null,
+  },
+  {
+    name: 'backup', status: 'DEGRADED', healthy: false,
+    used_bytes: 3 * 1024 ** 4, total_bytes: 4 * 1024 ** 4, free_bytes: 1 * 1024 ** 4,
+    used_pct: 75.0, scan_function: 'SCRUB', scan_state: 'SCANNING', scan_percentage: 42.5,
+  },
+]
+
+const TN_DISKS = [
+  { name: 'sda', model: 'WD40EFRX', disk_type: 'HDD', size_bytes: 4 * 1024 ** 4, pool: 'tank', temperature_c: 34, smart_status: 'PASS' },
+  { name: 'sdc', model: 'ST4000VN008', disk_type: 'HDD', size_bytes: 4 * 1024 ** 4, pool: '', temperature_c: 41, smart_status: 'FAIL' },
+]
+
+const TN_BACKUPS = [
+  { kind: 'replication', name: 'tank-to-backup', state: 'FINISHED', at: new Date().toISOString() },
+  { kind: 'cloudsync', name: 'backblaze-offsite', state: 'FAILED', at: new Date().toISOString() },
+]
+
+// No `message` field on purpose — the public panel coarsens it away. The row
+// carries only level, category (the klass) and time.
+const TN_ALERTS = [
+  { level: 'CRITICAL', category: 'ZpoolCapacityNotice', at: new Date().toISOString() },
+]
+
+const TRUENAS = {
+  available: true, detail: '', polled_at: new Date().toISOString(), stale: false,
+  hostname: 'truenas', system: TN_SYSTEM, pools: TN_POOLS, disks: TN_DISKS,
+  backups: TN_BACKUPS, alerts: TN_ALERTS,
+}
+
+const ADAPTERS = [
+  { key: 'overview', label: 'Overview', health: '' },
+  { key: 'proxmox', label: 'Proxmox', health: 'warn' },
+  { key: 'truenas', label: 'TrueNAS', health: 'err' },
+]
+
+const OVERVIEW = {
+  adapters: [
+    { key: 'proxmox', label: 'Proxmox', health: 'warn', stats: [
+      { label: 'Nodes online', value: '1 / 2', tone: 'warn' },
+      { label: 'Cluster', value: 'Degraded', tone: 'warn' },
+    ] },
+    { key: 'truenas', label: 'TrueNAS', health: 'err', stats: [
+      { label: 'Pools healthy', value: '1 / 2', tone: 'err' },
+      { label: 'Capacity used', value: '64%', tone: 'ok' },
+      { label: 'Critical alerts', value: '1', tone: 'err' },
+    ] },
+  ],
+}
+
 function payload(overrides = {}) {
   return {
     landing_page: 'dashboard',
-    panels: ['status_summary', 'proxmox_cluster', 'proxmox_nodes'],
+    panels: [
+      'status_summary', 'proxmox_cluster', 'proxmox_nodes',
+      'truenas_system', 'truenas_pools', 'truenas_disks', 'truenas_alerts',
+    ],
+    adapters: ADAPTERS,
+    overview: OVERVIEW,
     status_summary: SUMMARY,
     proxmox: {
-      available: true,
-      detail: '',
-      polled_at: new Date().toISOString(),
-      stale: false,
-      cluster: CLUSTER,
-      nodes: NODES,
+      available: true, detail: '', polled_at: new Date().toISOString(),
+      stale: false, cluster: CLUSTER, nodes: NODES,
     },
+    truenas: TRUENAS,
     ...overrides,
   }
 }
 
-async function open(body = payload()) {
+async function open(body = payload(), adapter = 'overview') {
   vi.spyOn(api, 'getPanels').mockResolvedValue(body)
-  const wrapper = mount(Dashboard)
+  const wrapper = mount(Dashboard, { props: { adapter } })
   await new Promise((resolve) => setTimeout(resolve, 0))
   await wrapper.vm.$nextTick()
   return wrapper
@@ -111,6 +188,7 @@ async function open(body = payload()) {
 
 beforeEach(() => {
   vi.restoreAllMocks()
+  navigate.mockClear()
   state.services = []
 })
 
@@ -121,39 +199,101 @@ describe('the panel endpoint is the only source', () => {
     wrapper.unmount()
   })
 
-  it('renders no Proxmox panel when the payload has none', async () => {
-    // §7d: no token -> no panel. Nothing on the page may fill that gap.
-    const wrapper = await open(payload({ proxmox: null, panels: ['status_summary'] }))
-    expect(wrapper.text()).not.toContain('Cluster health')
-    expect(wrapper.text()).not.toContain('Nodes')
-    expect(wrapper.text()).toContain('Status Summary')
-    wrapper.unmount()
-  })
-
   it('renders no status panel when it is switched off', async () => {
-    const wrapper = await open(
-      payload({ status_summary: null, panels: ['proxmox_cluster', 'proxmox_nodes'] }),
-    )
+    const body = payload({ status_summary: null })
+    body.panels = body.panels.filter((p) => p !== 'status_summary')
+    const wrapper = await open(body, 'overview')
     expect(wrapper.text()).not.toContain('Status Summary')
-    expect(wrapper.text()).toContain('Cluster health')
     wrapper.unmount()
   })
 
   it('renders no nodes table when that panel alone is off', async () => {
     const body = payload()
     body.proxmox.nodes = null
-    const wrapper = await open(body)
+    const wrapper = await open(body, 'proxmox')
     expect(wrapper.text()).toContain('Cluster health')
     expect(wrapper.find('.nodes-table').exists()).toBe(false)
     wrapper.unmount()
   })
 })
 
+describe('the adapter bar (TN4)', () => {
+  it('renders a pill per configured adapter, Overview first, from the payload', async () => {
+    const wrapper = await open()
+    const labels = wrapper.findAll('.adapter-pill').map((p) => p.text().trim())
+    expect(labels).toEqual(['Overview', 'Proxmox', 'TrueNAS'])
+    wrapper.unmount()
+  })
+
+  it('marks the active adapter and puts a health dot on providers, not Overview', async () => {
+    const wrapper = await open(payload(), 'truenas')
+    const pills = wrapper.findAll('.adapter-pill')
+    // Overview has no dot; the two providers do.
+    expect(pills[0].find('.adapter-dot').exists()).toBe(false)
+    expect(pills[2].find('.adapter-dot.dot-err').exists()).toBe(true)
+    expect(pills[2].classes()).toContain('active')
+    wrapper.unmount()
+  })
+
+  it('routes to the adapter section on click', async () => {
+    const wrapper = await open()
+    await wrapper.findAll('.adapter-pill')[2].trigger('click')
+    expect(navigate).toHaveBeenCalledWith('dashboard', { adapter: 'truenas' })
+    wrapper.unmount()
+  })
+
+  it('shows only configured adapters — one provider yields two pills', async () => {
+    const body = payload({
+      adapters: [
+        { key: 'overview', label: 'Overview', health: '' },
+        { key: 'truenas', label: 'TrueNAS', health: 'err' },
+      ],
+      proxmox: null,
+    })
+    const wrapper = await open(body, 'truenas')
+    const labels = wrapper.findAll('.adapter-pill').map((p) => p.text().trim())
+    expect(labels).toEqual(['Overview', 'TrueNAS'])
+    wrapper.unmount()
+  })
+})
+
+describe('the Overview branch', () => {
+  it('shows the status summary and a curated tile per adapter', async () => {
+    const wrapper = await open()
+    expect(wrapper.text()).toContain('Status Summary')
+    const tiles = wrapper.findAll('.ov-card')
+    expect(tiles).toHaveLength(2)
+    expect(wrapper.text()).toContain('Pools healthy')
+    expect(wrapper.text()).toContain('Critical alerts')
+    wrapper.unmount()
+  })
+
+  it('drills into a section when a tile is clicked', async () => {
+    const wrapper = await open()
+    await wrapper.findAll('.ov-card')[1].trigger('click')
+    expect(navigate).toHaveBeenCalledWith('dashboard', { adapter: 'truenas' })
+    wrapper.unmount()
+  })
+
+  it('works with no provider configured, like the status panel', async () => {
+    const wrapper = await open(
+      payload({
+        adapters: [{ key: 'overview', label: 'Overview', health: '' }],
+        overview: { adapters: [] },
+        proxmox: null,
+        truenas: null,
+      }),
+      'overview',
+    )
+    expect(wrapper.text()).toContain('Status Summary')
+    expect(wrapper.findAll('.ov-card')).toHaveLength(0)
+    wrapper.unmount()
+  })
+})
+
 describe('the staleness affordance (audit informational)', () => {
   // The page's stated purpose is to sit open. A quiet refresh failure used to
-  // set no state at all, so every number silently stopped meaning "now" —
-  // the catalog says "Not refreshing" for the same condition, and now so
-  // does this screen.
+  // set no state at all, so every number silently stopped meaning "now".
   it('says the dashboard has stopped refreshing, without blanking it', async () => {
     const wrapper = await open()
     api.getPanels.mockRejectedValue(new Error('unreachable'))
@@ -163,7 +303,6 @@ describe('the staleness affordance (audit informational)', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain('Not refreshing — server unreachable')
-    // The last good payload keeps rendering; no error notice replaces it.
     expect(wrapper.text()).toContain('Status Summary')
     expect(wrapper.find('.notice.err').exists()).toBe(false)
     wrapper.unmount()
@@ -186,66 +325,178 @@ describe('the staleness affordance (audit informational)', () => {
   })
 })
 
-describe('the summary row', () => {
+describe('the Proxmox section', () => {
   it('states quorum and HA, not just a colour', async () => {
-    const wrapper = await open()
+    const wrapper = await open(payload(), 'proxmox')
     expect(wrapper.text()).toContain('Quorum')
     expect(wrapper.text()).toContain('Not configured')
     wrapper.unmount()
   })
 
   it('reads Degraded while a node is offline', async () => {
-    const wrapper = await open()
+    const wrapper = await open(payload(), 'proxmox')
     expect(wrapper.text()).toContain('Degraded')
     wrapper.unmount()
   })
 
   it('says Healthy on a standalone host, which has no quorum to lose', async () => {
     const body = payload()
-    body.proxmox.cluster = {
-      ...CLUSTER,
-      quorate: null,
-      nodes_online: 1,
-      nodes_total: 1,
-    }
-    const wrapper = await open(body)
+    body.proxmox.cluster = { ...CLUSTER, quorate: null, nodes_online: 1, nodes_total: 1 }
+    const wrapper = await open(body, 'proxmox')
     expect(wrapper.text()).toContain('Healthy')
     expect(wrapper.text()).toContain('Single host')
     wrapper.unmount()
   })
-})
 
-describe('the nodes table', () => {
   it('has exactly the columns §7d names, in order', async () => {
-    const wrapper = await open()
-    const headers = wrapper
-      .findAll('.node-row.head .col-head')
-      .map((cell) => cell.text())
+    const wrapper = await open(payload(), 'proxmox')
+    const headers = wrapper.findAll('.node-row.head .col-head').map((cell) => cell.text())
     expect(headers).toEqual([
-      'Node',
-      'Status',
-      'Uptime',
-      'CPU',
-      'RAM',
-      'Load avg',
-      'Storage',
-      'Version',
+      'Node', 'Status', 'Uptime', 'CPU', 'RAM', 'Load avg', 'Storage', 'Version',
     ])
     wrapper.unmount()
   })
 
   it('still lists a node whose per-node read failed', async () => {
-    const wrapper = await open()
+    const wrapper = await open(payload(), 'proxmox')
     const text = wrapper.find('.nodes-table').text()
     expect(text).toContain('pve-b')
     expect(text).toContain('Offline')
+    wrapper.unmount()
+  })
+
+  it('shows a not-configured card when navigated to with no Proxmox', async () => {
+    const wrapper = await open(payload({ proxmox: null }), 'proxmox')
+    expect(wrapper.text()).toContain('Proxmox is not configured.')
+    expect(wrapper.find('.nodes-table').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('shows the reason a cluster is unavailable', async () => {
+    const wrapper = await open(
+      payload({
+        proxmox: {
+          available: false,
+          detail: 'Proxmox polling is switched off in Settings.',
+          polled_at: null, stale: false, cluster: null, nodes: null,
+        },
+      }),
+      'proxmox',
+    )
+    expect(wrapper.text()).toContain('Proxmox polling is switched off in Settings.')
+    expect(wrapper.find('.nodes-table').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('marks a snapshot that stopped refreshing', async () => {
+    const body = payload()
+    body.proxmox.stale = true
+    const wrapper = await open(body, 'proxmox')
+    expect(wrapper.text()).toContain('Not refreshing')
+    wrapper.unmount()
+  })
+})
+
+describe('the TrueNAS section', () => {
+  it('renders system, pools, disks and alerts from the payload', async () => {
+    const wrapper = await open(payload(), 'truenas')
+    expect(wrapper.text()).toContain('Pool health')
+    expect(wrapper.text()).toContain('System')
+    expect(wrapper.text()).toContain('Capacity')
+    // Pools tab is first: both pools listed.
+    const table = wrapper.find('.truenas-table').text()
+    expect(table).toContain('tank')
+    expect(table).toContain('backup')
+    wrapper.unmount()
+  })
+
+  it('switches to the Disks tab and shows disks with no serial column', async () => {
+    const wrapper = await open(payload(), 'truenas')
+    const tabs = wrapper.findAll('.dash-tab')
+    await tabs.find((t) => t.text() === 'Disks').trigger('click')
+    const headers = wrapper.findAll('.tn-disk-row.head .col-head').map((c) => c.text())
+    expect(headers).toEqual(['Disk', 'Model', 'Type', 'Pool', 'SMART', 'Temp'])
+    expect(headers).not.toContain('Serial')
+    expect(wrapper.find('.truenas-table').text()).toContain('sdc')
+    wrapper.unmount()
+  })
+
+  it('shows the coarsened alert — level and category, never a raw message', async () => {
+    const wrapper = await open(payload(), 'truenas')
+    await wrapper.findAll('.dash-tab').find((t) => t.text() === 'Alerts').trigger('click')
+    const row = wrapper.find('.tn-alert-row.body')
+    expect(row.text()).toContain('CRITICAL')
+    // The klass is humanised for display.
+    expect(row.text()).toContain('Zpool Capacity Notice')
+    wrapper.unmount()
+  })
+
+  it('opens the drawer from a pool row', async () => {
+    const wrapper = await open(payload(), 'truenas')
+    await wrapper.find('.tn-pool-row.body').trigger('click')
+    const drawer = wrapper.find('.drawer')
+    expect(drawer.exists()).toBe(true)
+    expect(drawer.text()).toContain('tank')
+    wrapper.unmount()
+  })
+
+  it('opens the drawer from an alert row with no raw message', async () => {
+    const wrapper = await open(payload(), 'truenas')
+    await wrapper.findAll('.dash-tab').find((t) => t.text() === 'Alerts').trigger('click')
+    await wrapper.find('.tn-alert-row.body').trigger('click')
+    const drawer = wrapper.find('.drawer')
+    expect(drawer.text()).toContain('Zpool Capacity Notice')
+    expect(drawer.text()).toContain('CRITICAL')
+    wrapper.unmount()
+  })
+
+  it('drops a sub-block whose toggle is off', async () => {
+    const body = payload()
+    body.truenas = { ...TRUENAS, disks: null }
+    body.panels = body.panels.filter((p) => p !== 'truenas_disks')
+    const wrapper = await open(body, 'truenas')
+    const tabs = wrapper.findAll('.dash-tab').map((t) => t.text())
+    expect(tabs).not.toContain('Disks')
+    expect(tabs).toContain('Pools')
+    wrapper.unmount()
+  })
+
+  it('shows a not-configured card when navigated to with no TrueNAS', async () => {
+    const wrapper = await open(payload({ truenas: null }), 'truenas')
+    expect(wrapper.text()).toContain('TrueNAS is not configured.')
+    wrapper.unmount()
+  })
+
+  it('shows the reason when TrueNAS is unavailable', async () => {
+    const wrapper = await open(
+      payload({
+        truenas: {
+          available: false,
+          detail: 'TrueNAS polling is switched off in Settings.',
+          polled_at: null, stale: false, hostname: '',
+          system: null, pools: null, disks: null, backups: null, alerts: null,
+        },
+      }),
+      'truenas',
+    )
+    expect(wrapper.text()).toContain('TrueNAS polling is switched off in Settings.')
+    expect(wrapper.find('.truenas-table').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('says so when there are no active alerts', async () => {
+    const body = payload()
+    body.truenas = { ...TRUENAS, alerts: [] }
+    const wrapper = await open(body, 'truenas')
+    await wrapper.findAll('.dash-tab').find((t) => t.text() === 'Alerts').trigger('click')
+    expect(wrapper.find('.truenas-table').text()).toContain('No active alerts.')
     wrapper.unmount()
   })
 })
 
 describe('the detail drawer', () => {
   it('opens from a node row with that node’s numbers', async () => {
-    const wrapper = await open()
+    const wrapper = await open(payload(), 'proxmox')
     await wrapper.findAll('.node-row.body')[0].trigger('click')
     const drawer = wrapper.find('.drawer')
     expect(drawer.exists()).toBe(true)
@@ -256,9 +507,7 @@ describe('the detail drawer', () => {
   })
 
   it('offers an Open web UI action pointing at that node', async () => {
-    // Validation finding 9. The action list was empty for a node; the operator
-    // asked for a link to the node's own Proxmox console.
-    const wrapper = await open()
+    const wrapper = await open(payload(), 'proxmox')
     await wrapper.findAll('.node-row.body')[0].trigger('click')
     const actions = wrapper.findAll('.drawer-action')
     expect(actions).toHaveLength(1)
@@ -268,12 +517,9 @@ describe('the detail drawer', () => {
   })
 
   it('renders the actions list empty rather than hiding it', async () => {
-    // §12's line is that actions are a LIST, and the empty case still has to
-    // render — a node whose address the provider could not read gets no action
-    // rather than a dead link. That is what proves it is data, not fixed rows.
     const body = payload()
     body.proxmox.nodes = [{ ...NODES[0], ip: '' }]
-    const wrapper = await open(body)
+    const wrapper = await open(body, 'proxmox')
     await wrapper.findAll('.node-row.body')[0].trigger('click')
     expect(wrapper.find('.drawer').text()).toContain('No actions')
     expect(wrapper.findAll('.drawer-action')).toHaveLength(0)
@@ -283,14 +529,11 @@ describe('the detail drawer', () => {
   it('gives a service the one action it has, from the same list', async () => {
     state.services = [
       {
-        slug: 'jellyfin',
-        name: 'Jellyfin',
-        launch_url: 'https://jellyfin.lab.local',
-        host_label: 'pve-d · CT 105',
-        category: 'media',
+        slug: 'jellyfin', name: 'Jellyfin', launch_url: 'https://jellyfin.lab.local',
+        host_label: 'pve-d · CT 105', category: 'media',
       },
     ]
-    const wrapper = await open()
+    const wrapper = await open(payload(), 'overview')
     await wrapper.findAll('.dash-list-row')[0].trigger('click')
     const actions = wrapper.findAll('.drawer-action')
     expect(actions).toHaveLength(1)
@@ -302,16 +545,11 @@ describe('the detail drawer', () => {
   it('will not link a javascript: URL, and offers no action for one', async () => {
     // api-security gate, V1.5. `launch_url` has no scheme validation on the
     // write path and is anonymously settable under `open-writes`; an anchor
-    // executes `javascript:` on click in every browser. The value is still
-    // shown, because an operator needs to see what is wrong with it.
+    // executes `javascript:` on click in every browser.
     state.services = [
-      {
-        slug: 'jellyfin',
-        name: 'Jellyfin',
-        launch_url: 'javascript:alert(document.cookie)',
-      },
+      { slug: 'jellyfin', name: 'Jellyfin', launch_url: 'javascript:alert(document.cookie)' },
     ]
-    const wrapper = await open()
+    const wrapper = await open(payload(), 'overview')
     await wrapper.findAll('.dash-list-row')[0].trigger('click')
     const drawer = wrapper.find('.drawer')
     expect(drawer.text()).toContain('javascript:alert(document.cookie)')
@@ -321,45 +559,15 @@ describe('the detail drawer', () => {
   })
 
   it('omits rows it cannot fill instead of printing an em dash for each', async () => {
-    // A service with no link has no version and no uptime — those belong to a
-    // node. Showing "—" for every service is noise pretending to be data.
     state.services = [
       { slug: 'jellyfin', name: 'Jellyfin', launch_url: 'https://jellyfin.lab.local' },
     ]
-    const wrapper = await open()
+    const wrapper = await open(payload(), 'overview')
     await wrapper.findAll('.dash-list-row')[0].trigger('click')
     const keys = wrapper.findAll('.drawer-key').map((cell) => cell.text())
     expect(keys).toContain('URL')
     expect(keys).not.toContain('Version')
     expect(keys).not.toContain('Uptime')
-    wrapper.unmount()
-  })
-})
-
-describe('degraded states', () => {
-  it('shows the reason a cluster is unavailable', async () => {
-    const wrapper = await open(
-      payload({
-        proxmox: {
-          available: false,
-          detail: 'Proxmox polling is switched off in Settings.',
-          polled_at: null,
-          stale: false,
-          cluster: null,
-          nodes: null,
-        },
-      }),
-    )
-    expect(wrapper.text()).toContain('Proxmox polling is switched off in Settings.')
-    expect(wrapper.find('.nodes-table').exists()).toBe(false)
-    wrapper.unmount()
-  })
-
-  it('marks a snapshot that stopped refreshing', async () => {
-    const body = payload()
-    body.proxmox.stale = true
-    const wrapper = await open(body)
-    expect(wrapper.text()).toContain('Not refreshing')
     wrapper.unmount()
   })
 
@@ -368,6 +576,7 @@ describe('degraded states', () => {
       payload({
         status_summary: { ...SUMMARY, down: 0, stale: 0, attention: [], attention_total: 0 },
       }),
+      'overview',
     )
     expect(wrapper.text()).toContain('Everything with a health check is up.')
     wrapper.unmount()

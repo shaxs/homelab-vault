@@ -17,9 +17,15 @@
 import { computed, onMounted, ref } from 'vue'
 
 import { api } from '../api.js'
+import { navigate } from '../router.js'
 import { loadPublicSettings, state, withWriteGate } from '../store.js'
 import { useTheme } from '../theme.js'
 
+const props = defineProps({
+  /** The section route parameter — a slug like `health-checks`. Empty on the
+   *  bare `/settings` route, which shows the first section. */
+  section: { type: String, default: '' },
+})
 const emit = defineEmits(['back'])
 
 const theme = useTheme()
@@ -54,6 +60,16 @@ const ENV_SECTION = {
   HOMELABVAULT_DISCORD_WEBHOOK_URL: 'Notifications',
   PROXMOX_HOST: 'Proxmox',
   PROXMOX_API_TOKEN: 'Proxmox',
+  // TN2: without these, the backend's TRUENAS_* .env rows fall through to the
+  // Access card instead of the TrueNAS one — the .env-panel half of the
+  // settings producer/consumer pair. (The Proxmox-style "Connected" status
+  // aside for the TrueNAS card is TN4's richer frontend pass.)
+  TRUENAS_HOST: 'TrueNAS',
+  TRUENAS_API_KEY: 'TrueNAS',
+  // TN-WS: 25.04 keys are user-linked, so the username is a third credential —
+  // it belongs beside the key it unlocks, and its "Not configured" pill is how
+  // an operator sees the missing third piece.
+  TRUENAS_API_USER: 'TrueNAS',
 }
 
 const specsBySection = computed(() => {
@@ -101,6 +117,55 @@ const changed = computed(() =>
 )
 
 const dirty = computed(() => changed.value.length > 0)
+
+// --- Section navigation (TN-SET) ------------------------------------------
+//
+// One section shows at a time, picked by the `/settings/{section}` route. The
+// rail is DERIVED from the backend's section list (plus the two frontend-owned
+// cards), so a future provider's section gets a rail entry and a route with no
+// frontend change — the same property the adapter bar has.
+
+/** The label of the links card, which is frontend-owned (not a backend section). */
+const LINKS_SECTION = 'Data and API'
+
+/** `Health checks` -> `health-checks`. Stable, readable slugs derived from the
+ *  labels rather than a second hand-maintained list that could drift. */
+function slugFor(label) {
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+}
+
+const railItems = computed(() =>
+  [...sections.value, LINKS_SECTION].map((label) => ({ label, slug: slugFor(label) })),
+)
+
+/**
+ * The section being shown. An unknown or absent slug degrades to the first
+ * section rather than a dead page — same idiom as an unknown dashboard
+ * adapter degrading to Overview.
+ */
+const activeSection = computed(() => {
+  const found = railItems.value.find((item) => item.slug === props.section)
+  return found?.label || railItems.value[0]?.label || ''
+})
+
+/** Sections with unsaved edits, so the rail can show where they live even
+ *  while a different section is on screen. */
+const dirtySections = computed(() => {
+  const marked = new Set()
+  for (const spec of changed.value) marked.add(spec.section)
+  return marked
+})
+
+function goSection(item) {
+  navigate('settings', { section: item.slug })
+}
+
+/** The backend sections the body renders — just the active one. The card
+ *  markup inside the loop is untouched by TN-SET; only the loop's source
+ *  narrowed, which is what keeps every card-level test meaningful. */
+const visibleSections = computed(() =>
+  sections.value.filter((section) => section === activeSection.value),
+)
 
 /** Section badge: are its rows editable here, or owned by .env, or both? */
 /**
@@ -389,7 +454,29 @@ async function save() {
          nothing — sticky can only float an element within whatever is left of
          its parent's box, and after the last element there is nothing left. -->
     <div v-else class="settings-scroll">
-      <section v-for="section in sections" :key="section" class="card settings-card">
+      <!-- TN-SET: the section rail. Desktop: a sticky left sub-rail; phone: the
+           same element as a horizontal chip strip (the adapter-bar behaviour).
+           A warn dot marks a section holding unsaved edits, because the savebar
+           is global and the edits may live off-screen. -->
+      <nav class="settings-rail" aria-label="Settings sections">
+        <button
+          v-for="item in railItems"
+          :key="item.slug"
+          class="settings-rail-item"
+          :class="{ active: item.label === activeSection }"
+          @click="goSection(item)"
+        >
+          <span class="settings-rail-label">{{ item.label }}</span>
+          <span
+            v-if="dirtySections.has(item.label)"
+            class="settings-rail-dirty"
+            title="Unsaved changes in this section"
+          />
+        </button>
+      </nav>
+
+      <div class="settings-body">
+      <section v-for="section in visibleSections" :key="section" class="card settings-card">
         <header class="settings-card-head">
           <div class="settings-card-title">{{ section }}</div>
           <span
@@ -668,8 +755,9 @@ async function save() {
 
       <!-- Moved off the top bar (V1.5 validation, finding 5). Both are
            occasional, deliberate actions rather than navigation, so they belong
-           on the screen you visit on purpose. -->
-      <section class="card settings-card">
+           on the screen you visit on purpose. Frontend-owned, so it is gated on
+           the active section here rather than riding the backend section list. -->
+      <section v-if="activeSection === LINKS_SECTION" class="card settings-card">
         <div class="settings-card-head">
           <div class="settings-card-title">Data and API</div>
           <span class="settings-badge muted" title="These open in a new tab; nothing here changes any setting.">
@@ -701,6 +789,7 @@ async function save() {
           </a>
         </div>
       </section>
+      </div>
     </div>
 
     <div v-if="dirty" class="settings-savebar">

@@ -115,6 +115,23 @@ def _no_real_proxmox(settings):
     settings.PROXMOX_API_TOKEN = ""
 
 
+@pytest.fixture(autouse=True)
+def _no_real_truenas(settings):
+    """No test may reach the operator's real TrueNAS box (TN1/TN2).
+
+    The exact counterpart to `_no_real_proxmox`, and it was missing until a real
+    TrueNAS box was wired into the dev `.env` during TN1/TN2 validation — at which
+    point the provider's "not configured" tests started polling the live box (and
+    the worker's `--once` pass cached a real snapshot). Clearing the credentials
+    makes `is_configured()` false so the provider short-circuits; tests that need
+    a configured TrueNAS set `TRUENAS_HOST`/`TRUENAS_API_KEY`/`TRUENAS_API_USER`
+    themselves and stub the transport (`install` in `truenas_fakes`).
+    """
+    settings.TRUENAS_HOST = ""
+    settings.TRUENAS_API_KEY = ""
+    settings.TRUENAS_API_USER = ""
+
+
 @pytest.fixture
 def client():
     return Client()

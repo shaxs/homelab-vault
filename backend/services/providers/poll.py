@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from .. import notifications
 from ..models import ProviderSnapshot
-from .base import Provider, ProviderUnavailable
+from .base import CRITICAL_ALERT_LEVELS, Provider, ProviderUnavailable
 
 logger = logging.getLogger("services.providers.poll")
 
@@ -44,6 +44,11 @@ def poll_provider(provider: Provider) -> ProviderSnapshot:
     row, _ = ProviderSnapshot.objects.get_or_create(
         provider=provider.name, defaults={"fetched_at": now}
     )
+    # Captured before the wholesale payload overwrite below: the edge-triggered
+    # alert forwarder diffs this poll's active alerts against the set the
+    # *previous* snapshot already notified. Reading it off the row we are about to
+    # rewrite is what lets the notified set live in the payload with no migration.
+    old_payload = row.payload or {}
 
     if not provider.is_configured():
         # Not an error state (§7d): no token means no panel, no enrichment, no
@@ -78,6 +83,7 @@ def poll_provider(provider: Provider) -> ProviderSnapshot:
         )
 
     infrastructure, infrastructure_detail = _infrastructure(provider, status)
+    report, report_detail = _report(provider, status)
 
     row.payload = {
         "guests": [
@@ -93,6 +99,16 @@ def poll_provider(provider: Provider) -> ProviderSnapshot:
         # cache, one `fetched_at`, one thing to reason about staleness with.
         "infrastructure": infrastructure,
         "infrastructure_detail": infrastructure_detail,
+        # The optional `report()` capability (TrueNAS pools/disks/system/alerts),
+        # cached for the adapter section TN3 renders. `None` for a provider that
+        # has no report (Proxmox) or one that could not read it — the reason rides
+        # `report_detail`, the same shape as `infrastructure`/`infrastructure_detail`.
+        "report": report.as_payload() if report is not None else None,
+        "report_detail": report_detail,
+        # The edge-trigger state for native provider alerts — the set already
+        # forwarded to Discord, so next poll announces only what newly appeared.
+        # In the payload, not a column: no migration (done-when).
+        "notified_alert_keys": _forward_provider_alerts(provider, report, old_payload),
     }
     row.ok = True
     row.detail = ""
@@ -185,3 +201,81 @@ def _infrastructure(provider: Provider, status=None) -> tuple[dict | None, str]:
     if result is None:
         return None, "This provider does not report cluster infrastructure."
     return result.as_payload(), ""
+
+
+def _report(provider: Provider, status=None):
+    """A provider's optional `report()` payload, or `None` plus the reason.
+
+    Mirrors `_infrastructure()` exactly — same reflection (`getattr`), same
+    failure discipline, same "a decoration surprise never fails the poll" rule.
+    Returns the report **object** (not its payload) so the caller can both
+    serialise it and diff its `alerts` for forwarding; the object carries
+    `as_payload()`.
+
+    Discovered by reflection rather than the `Provider` Protocol on purpose:
+    `report` is not a Protocol method (that would force every provider to define
+    it and break the guest-only ones — see `base.py`), so a provider without one
+    is `None` here and nothing else.
+    """
+    reader = getattr(provider, "report", None)
+    if reader is None:
+        return None, "This provider does not report a status section."
+    try:
+        result = reader(status=status) if status is not None else reader()
+    except ProviderUnavailable as exc:
+        logger.warning("provider %s report read failed: %s", provider.name, exc)
+        return None, str(exc)
+    except Exception:  # noqa: BLE001 - a report surprise must not cost the poll
+        logger.exception(
+            "provider %s report read failed unexpectedly", provider.name
+        )
+        return None, "Provider returned an unexpected response; see the worker log."
+    if result is None:
+        return None, "This provider does not report a status section."
+    return result, ""
+
+
+def _forward_provider_alerts(provider: Provider, report, old_payload: dict) -> list[str]:
+    """Edge-triggered Discord forwarding of a provider's own native alerts (TN2).
+
+    The same edge-trigger philosophy as every alert here (BACKLOG.6, the deadman):
+    diff this poll's active critical/high alerts against the set the previous
+    snapshot already notified, announce only what **newly** appeared, and announce
+    once that something cleared. The notified set is carried in the payload — no
+    migration.
+
+    Two boundaries this function holds, both from TN1's forward obligation:
+
+    - **The alert text is untrusted.** `formatted` names pools and datasets a
+      hostile actor with write access to the box could influence, so it is
+      `sanitize()`d inside `provider_alert_message()` before it can reach Discord,
+      exactly like a probed page title. `allowed_mentions.parse=[]` holds in
+      `build_payload`, so text can never trigger a ping.
+    - **The notified set advances on every successful poll, gate or no gate.**
+      Whether or not Discord is enabled, the returned set becomes "already
+      notified", so switching Discord on mid-alert does not replay every alert
+      already standing — it announces the eventual *recovery* of a fall it never
+      announced. This is the documented provider-alert latch behaviour (§5,
+      AS_BUILT), applied to native alerts.
+    """
+    already = set(old_payload.get("notified_alert_keys") or [])
+
+    if report is None:
+        # A provider with no report() (Proxmox) has no native alerts; its poll
+        # failures ride the separate `consec_failures` path. Preserve any prior
+        # set rather than clearing it, so the field is inert for such providers.
+        return sorted(already)
+
+    critical = [a for a in report.alerts if a.level in CRITICAL_ALERT_LEVELS]
+    current_keys = {a.key for a in critical}
+
+    for alert in critical:
+        if alert.key not in already:
+            _notify(notifications.provider_alert_message(provider.name, alert))
+    if already - current_keys:
+        _notify(
+            notifications.provider_alert_cleared_message(
+                provider.name, len(already - current_keys)
+            )
+        )
+    return sorted(current_keys)

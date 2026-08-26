@@ -51,7 +51,7 @@ SETTINGS = "\n".join(
 )
 
 IMAGE_REF = "image: ghcr.io/shaxs/homelab-vault:${IMAGE_TAG:-latest}"
-APP_SERVICES = 3  # web, worker, proxmox-worker
+APP_SERVICES = 4  # web, worker, proxmox-worker, truenas-worker (TN2)
 
 
 def test_every_app_service_runs_the_published_image():

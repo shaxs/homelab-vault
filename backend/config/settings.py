@@ -243,6 +243,32 @@ PROXMOX_API_TOKEN = env.str("PROXMOX_API_TOKEN", default="")
 # cluster presents a certificate your trust store accepts.
 PROXMOX_VERIFY_TLS = env.bool("PROXMOX_VERIFY_TLS", default=False)
 PROXMOX_TIMEOUT_S = env.float("PROXMOX_TIMEOUT_S", default=15.0)
+
+# --- TrueNAS SCALE, read-only (v1 §7a — the second provider) ----------------
+#
+# Same shape and same reasons as the Proxmox block above: deploy-time only,
+# unreachable from the settings table (which stores bool/int/enum/env_ref).
+# What IS settings-table state is whether polling runs and how often —
+# `truenas.polling.enabled` / `truenas.poll_interval_s`, consumed by
+# services/providers/truenas.py.
+TRUENAS_HOST = env.str("TRUENAS_HOST", default="")
+# A read-only API key, linked to a TrueNAS user holding the Read-Only Admin
+# role (25.04+ keys are user-linked). Presented once per poll in the WebSocket
+# `auth.login_ex` handshake — never in a URL, never over plaintext (the client
+# connects wss:// only, because TrueNAS REVOKES a key it sees on plain HTTP).
+# `_KEY` in the name makes settings_store refuse to display its value.
+TRUENAS_API_KEY = env.str("TRUENAS_API_KEY", default="")
+# The username the key is linked to (e.g. a dedicated `hvault` service
+# account). Required by `auth.login_ex`: 25.04's user-linked keys authenticate
+# as their user, so the key alone no longer identifies the account.
+TRUENAS_API_USER = env.str("TRUENAS_API_USER", default="")
+# Named and explicit like PROXMOX_VERIFY_TLS, and off for the same reason: a
+# homelab TrueNAS commonly presents a self-signed or private-CA certificate, so
+# True would fail closed for almost everyone — but it is a reviewable setting,
+# not a hidden bypass. The key is read-only, which bounds the cost. Set True
+# once TrueNAS presents a certificate your trust store accepts.
+TRUENAS_VERIFY_TLS = env.bool("TRUENAS_VERIFY_TLS", default=False)
+TRUENAS_TIMEOUT_S = env.float("TRUENAS_TIMEOUT_S", default=15.0)
 # Icons above this are NOT base64-inlined into the recovery export (§9). The
 # spec's "at ~46 favicons the file stays small" assumes small favicons; real
 # ones are not always (LazyLibrarian ships a 370KB .ico). Those services simply

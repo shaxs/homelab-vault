@@ -181,7 +181,14 @@ function goHome() {
   navigate(landingPage.value)
 }
 
-const WORKER_LABELS = { health: 'Health worker', proxmox: 'Proxmox worker' }
+const WORKER_LABELS = {
+  health: 'Health worker',
+  proxmox: 'Proxmox worker',
+  // TN2: a new worker needs its label here, or it renders as the raw key
+  // ("truenas reporting") — the fallback below is for genuinely-unknown workers.
+  // TrueNAS is not title-case ("Truenas"), so it must be spelled out.
+  truenas: 'TrueNAS worker',
+}
 
 /** Worker liveness for the sidebar foot, from the heartbeat (§5a). */
 const workerRows = computed(() =>
@@ -603,9 +610,21 @@ async function onGateAuthenticated() {
            the button says "Back to the catalog", and with the dashboard as the
            landing page `goHome` made it — and the post-delete return below —
            land on the Command Center instead. The label is the contract. -->
-      <SettingsScreen v-if="screen === 'settings'" @back="goCatalog" />
+      <!-- `section` comes from `/settings/{section}`; bare `/settings` is the
+           first section (the screen defaults it). -->
+      <SettingsScreen
+        v-if="screen === 'settings'"
+        :section="route.section"
+        @back="goCatalog"
+      />
 
-      <Dashboard v-else-if="screen === 'dashboard'" @filter="applyQuery" />
+      <!-- `adapter` comes from `/dashboard/{adapter}`; bare `/dashboard` is the
+           Overview (the Dashboard defaults the prop to 'overview'). -->
+      <Dashboard
+        v-else-if="screen === 'dashboard'"
+        :adapter="route.adapter"
+        @filter="applyQuery"
+      />
 
       <ServiceRecord
         v-else-if="screen === 'record' && current"

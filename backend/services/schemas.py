@@ -385,6 +385,152 @@ class ProxmoxPanelOut(Schema):
     nodes: list[NodePanelOut] | None = None
 
 
+# --- Adapter bar + curated Overview (TN4/TN3) ------------------------------
+
+
+class AdapterOut(Schema):
+    """One pill in the adapter bar — `Overview` plus one per configured provider.
+
+    `health` is a closed set: `""` (Overview, which carries no dot), `ok`, `warn`
+    or `err`, derived server-side from the cached snapshot so the pill can show a
+    degraded adapter without the browser recomputing it.
+    """
+
+    key: str
+    label: str
+    health: str
+
+
+class OverviewStatOut(Schema):
+    """One curated headline stat on an Overview tile.
+
+    `value` is a **display-ready** summary (`"3 / 4"`, `"Healthy"`, `"72%"`) — the
+    Overview is a glance, not the raw numeric pipe the section panels expose.
+    `tone` is an optional `ok`/`warn`/`err` colour hint.
+    """
+
+    label: str
+    value: object
+    tone: str = ""
+
+
+class OverviewAdapterOut(Schema):
+    """One configured adapter's curated summary, for the Overview branch."""
+
+    key: str
+    label: str
+    health: str
+    stats: list[OverviewStatOut] = []
+
+
+class OverviewOut(Schema):
+    """§8's curated cross-adapter summary — always present, from cache only."""
+
+    adapters: list[OverviewAdapterOut] = []
+
+
+class TrueNASSystemOut(Schema):
+    """The System card: version, uptime, memory and load.
+
+    Same disclosure class as the Proxmox node data already public here — no
+    serials, no free text. `mem_used_bytes`/`mem_pct` are null until the reporting
+    API is wired (best-effort, per the provider).
+    """
+
+    version: str
+    hostname: str
+    uptime_s: int | None
+    mem_used_bytes: int | None
+    mem_total_bytes: int | None
+    mem_pct: float | None
+    load_avg: float | None
+    cores: int | None
+
+
+class TrueNASPoolOut(Schema):
+    """One pool row. `used_pct` is computed server-side (§8: a percentage
+    computed twice in two places will disagree once)."""
+
+    name: str
+    status: str
+    healthy: bool
+    used_bytes: int | None
+    total_bytes: int | None
+    free_bytes: int | None
+    used_pct: float | None
+    scan_function: str
+    scan_state: str
+    scan_percentage: float | None
+
+
+class TrueNASDiskOut(Schema):
+    """One disk row.
+
+    **No `serial` field, deliberately.** TrueNAS's `/disk` row carries a serial;
+    the provider omits it at the `Disk` dataclass level (structural, like `Node`
+    dropping `ssl_fingerprint`) and this schema does not reintroduce it. A
+    disclosure test pins that serials never reach this endpoint — do not "fix"
+    the absence.
+    """
+
+    name: str
+    model: str
+    disk_type: str
+    size_bytes: int | None
+    pool: str
+    temperature_c: int | None
+    smart_status: str
+
+
+class TrueNASBackupOut(Schema):
+    """One backup-task (replication / cloud-sync) last-run outcome."""
+
+    kind: str
+    name: str
+    state: str
+    at: datetime | None
+
+
+class TrueNASAlertOut(Schema):
+    """A native TrueNAS alert, **coarsened** for this public endpoint.
+
+    **No `message` field, deliberately.** The provider's raw `formatted` alert
+    text names pools/datasets and is attacker-influenceable (TN1's forward
+    obligation), so the public row is `level` + `category` + time only.
+    `category` is TrueNAS's `klass` — a provider-defined type identifier
+    (`SMARTError`, `ZpoolCapacityNotice`) with no such content. The raw text stays
+    cached for the `sanitize()`d Discord path; a disclosure test pins that it
+    never appears on `/panels`.
+    """
+
+    level: str
+    category: str
+    at: datetime | None
+
+
+class TrueNASPanelOut(Schema):
+    """The cached TrueNAS state behind the TrueNAS adapter section.
+
+    `detail` is a **closed set of public strings** (`panels.py`), never the
+    snapshot's own `detail`, which can name `TRUENAS_HOST` or quote an httpx
+    error and is admin-scoped on the settings screen. Each sub-block is null when
+    its `ui.panels.truenas_*` toggle is off — omitted server-side, so a hidden
+    panel discloses nothing. `backups` has no toggle and rides along when the
+    section is available.
+    """
+
+    available: bool
+    detail: str
+    polled_at: datetime | None
+    stale: bool
+    hostname: str
+    system: TrueNASSystemOut | None = None
+    pools: list[TrueNASPoolOut] | None = None
+    disks: list[TrueNASDiskOut] | None = None
+    backups: list[TrueNASBackupOut] | None = None
+    alerts: list[TrueNASAlertOut] | None = None
+
+
 class PanelsOut(Schema):
     """§8's one panel endpoint. Assembled server-side from cached state only."""
 
@@ -392,9 +538,16 @@ class PanelsOut(Schema):
     #: Visible panel keys in render order. The frontend renders from this list,
     #: so switching a panel off in settings removes it from the page.
     panels: list[str]
+    #: The adapter bar (TN4): Overview + one pill per configured provider. Always
+    #: present — an unconfigured lab still gets a bar with just Overview.
+    adapters: list[AdapterOut] = []
+    #: The curated cross-adapter summary the Overview pill shows. Always present.
+    overview: OverviewOut | None = None
     status_summary: StatusSummaryOut | None = None
     #: Null when Proxmox is not configured (§7d) or both its panels are off.
     proxmox: ProxmoxPanelOut | None = None
+    #: Null when TrueNAS is not configured (§7d) or all four panels are off.
+    truenas: TrueNASPanelOut | None = None
 
 
 class SavedViewIn(StrictSchema):

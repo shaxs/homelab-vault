@@ -3,6 +3,9 @@ django-ninja>=1.6,<2.0
 django-environ>=0.12
 whitenoise>=6.9
 httpx>=0.28
+# The TrueNAS provider's transport (TN-WS): a synchronous WebSocket client for
+# the JSON-RPC API. httpx stays for the Proxmox provider and the health checker.
+websocket-client>=1.9
 # The database driver. PostgreSQL is the only supported backend (v1 §2a), in
 # development as well as production.
 psycopg[binary]>=3.2

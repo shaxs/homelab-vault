@@ -146,6 +146,42 @@ REGISTRY: tuple[SettingSpec, ...] = (
         consumer="V1.5",
     ),
     SettingSpec(
+        key="ui.panels.truenas_system",
+        kind=KIND_BOOL,
+        default=True,
+        label="TrueNAS System",
+        helper="Version, uptime, memory and load for the TrueNAS box.",
+        section="Panels",
+        consumer="TN3",
+    ),
+    SettingSpec(
+        key="ui.panels.truenas_pools",
+        kind=KIND_BOOL,
+        default=True,
+        label="TrueNAS Pools",
+        helper="Pool health, capacity and scrub/resilver state.",
+        section="Panels",
+        consumer="TN3",
+    ),
+    SettingSpec(
+        key="ui.panels.truenas_disks",
+        kind=KIND_BOOL,
+        default=True,
+        label="TrueNAS Disks",
+        helper="Per-disk model, type, pool, SMART status and temperature.",
+        section="Panels",
+        consumer="TN3",
+    ),
+    SettingSpec(
+        key="ui.panels.truenas_alerts",
+        kind=KIND_BOOL,
+        default=True,
+        label="TrueNAS Alerts",
+        helper="The box's own active alerts, coarsened for the public dashboard.",
+        section="Panels",
+        consumer="TN3",
+    ),
+    SettingSpec(
         key="health.default_interval_s",
         kind=KIND_INT,
         default=60,
@@ -254,6 +290,30 @@ REGISTRY: tuple[SettingSpec, ...] = (
         section="Proxmox",
         consumer="V1.4",
     ),
+    SettingSpec(
+        key="truenas.polling.enabled",
+        kind=KIND_BOOL,
+        default=False,
+        label="TrueNAS polling",
+        helper="Poll TrueNAS for pool, disk, system and native alert state.",
+        section="TrueNAS",
+        consumer="TN2",
+    ),
+    SettingSpec(
+        key="truenas.poll_interval_s",
+        kind=KIND_INT,
+        default=120,
+        minimum=30,
+        step=30,
+        unit="seconds",
+        label="TrueNAS poll interval",
+        helper=(
+            "How often the TrueNAS worker reads pools, disks and alerts. Storage "
+            "state changes slowly; the default is gentle on the box. Minimum 30."
+        ),
+        section="TrueNAS",
+        consumer="TN2",
+    ),
 )
 
 SPECS: dict[str, SettingSpec] = {spec.key: spec for spec in REGISTRY}
@@ -268,11 +328,20 @@ PUBLIC_SETTING_KEYS = frozenset(
         "ui.panels.status_summary",
         "ui.panels.proxmox_cluster",
         "ui.panels.proxmox_nodes",
+        # The TrueNAS panel toggles are public for the same reason the Proxmox
+        # ones are: the anonymous dashboard renders from this list, so a panel
+        # switched off must disappear from the page, not merely be hidden by CSS
+        # (see decision 2 in the module docstring). They gate presentation, never
+        # the polling/interval keys, which stay admin-only.
+        "ui.panels.truenas_system",
+        "ui.panels.truenas_pools",
+        "ui.panels.truenas_disks",
+        "ui.panels.truenas_alerts",
     }
 )
 
 #: Order the settings screen renders its cards in.
-SECTIONS = ("Appearance", "Panels", "Health checks", "Notifications", "Proxmox")
+SECTIONS = ("Appearance", "Panels", "Health checks", "Notifications", "Proxmox", "TrueNAS")
 
 
 # --- Validation ------------------------------------------------------------
@@ -488,6 +557,36 @@ ENV_CONTROLS: tuple[EnvControl, ...] = (
         note=(
             "Bind the token to a PVEAuditor role. Homelab Vault only ever reads "
             "from Proxmox and needs no write access."
+        ),
+    ),
+    EnvControl(
+        label="TrueNAS host",
+        env_var="TRUENAS_HOST",
+        disclosure=_SHOW_VALUE,
+        note=(
+            "The SCALE API endpoint, e.g. https://truenas.example.ts.net. Changing "
+            "it means editing .env and restarting the server."
+        ),
+    ),
+    EnvControl(
+        label="TrueNAS API key",
+        env_var="TRUENAS_API_KEY",
+        disclosure=_SHOW_PRESENCE,
+        note=(
+            "An API key linked to a TrueNAS user with the Read-Only Admin role. "
+            "Never present this key over plain HTTP — TrueNAS revokes it on the "
+            "spot; this app only ever sends it over TLS (wss://). The key is "
+            "never displayed here or returned by the API."
+        ),
+    ),
+    EnvControl(
+        label="TrueNAS API user",
+        env_var="TRUENAS_API_USER",
+        disclosure=_SHOW_VALUE,
+        note=(
+            "The TrueNAS username the API key is linked to (keys are user-linked "
+            "on 25.04+). A dedicated read-only service account is the intended "
+            "shape."
         ),
     ),
 )

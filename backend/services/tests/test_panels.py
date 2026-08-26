@@ -288,6 +288,10 @@ def test_no_proxmox_configured_means_no_proxmox_panel(client):
         "status_summary",
         "proxmox_cluster",
         "proxmox_nodes",
+        "truenas_system",
+        "truenas_pools",
+        "truenas_disks",
+        "truenas_alerts",
     ]
 
 
@@ -368,7 +372,14 @@ def test_switching_off_the_cluster_panel_removes_only_the_cluster(
 
     body = client.get(PANELS).json()
 
-    assert body["panels"] == ["status_summary", "proxmox_nodes"]
+    assert body["panels"] == [
+        "status_summary",
+        "proxmox_nodes",
+        "truenas_system",
+        "truenas_pools",
+        "truenas_disks",
+        "truenas_alerts",
+    ]
     assert body["proxmox"]["cluster"] is None
     assert body["proxmox"]["nodes"] is not None
 
@@ -396,7 +407,13 @@ def test_switching_off_both_proxmox_panels_drops_the_block(
     body = client.get(PANELS).json()
 
     assert body["proxmox"] is None
-    assert body["panels"] == ["status_summary"]
+    assert body["panels"] == [
+        "status_summary",
+        "truenas_system",
+        "truenas_pools",
+        "truenas_disks",
+        "truenas_alerts",
+    ]
 
 
 def test_the_landing_page_setting_is_served_to_the_dashboard(client):
@@ -468,3 +485,284 @@ def test_the_attention_list_is_capped_and_says_how_many_it_left_out(client):
     # eight rows already dominated the panel on a real catalog.
     assert len(summary["attention"]) == 5
     assert summary["attention_total"] == 11
+
+
+# --- TrueNAS adapter section (TN3) ------------------------------------------
+#
+# The mirror of the Proxmox block above, and the same three concerns: assembled
+# from cache, public-with-a-boundary, and toggles that actually reach the panel.
+# The boundary here is wider — a TrueNAS alert's raw `formatted` text and a
+# disk's serial are both withheld — so those get their own assertions.
+
+
+@pytest.fixture
+def truenas_configured(settings):
+    """Credentials present so the section renders; no transport is touched."""
+    settings.TRUENAS_HOST = "https://truenas.test"
+    settings.TRUENAS_API_KEY = "secret-key"
+    settings.TRUENAS_API_USER = "hvault"
+    write_settings({"truenas.polling.enabled": True})
+
+
+def real_truenas_snapshot(monkeypatch, **kwargs):
+    """A snapshot written by an actual poll of the fake TrueNAS box.
+
+    Like `real_snapshot`, this drives `poll_provider` through the transport-level
+    fake so the cached payload is exactly what the worker would write — the shape
+    this endpoint reads — rather than a hand-built dict that can drift from it.
+    """
+    from services.providers import TrueNASProvider
+    from services.providers.poll import poll_provider
+
+    from .truenas_fakes import FakeTrueNAS, install
+
+    provider = TrueNASProvider()
+    install(monkeypatch, provider, FakeTrueNAS(**kwargs))
+    return poll_provider(provider)
+
+
+def test_a_truenas_panel_read_makes_no_outbound_call(
+    client, truenas_configured, monkeypatch
+):
+    """§7c held for the second provider too: the section reads the cached
+    snapshot, so a configured TrueNAS on a request path still calls nothing."""
+    real_truenas_snapshot(monkeypatch)
+    calls = []
+
+    import httpx
+
+    original = httpx.Client.request
+
+    def counted(self, method, url, *args, **kwargs):
+        calls.append(f"{method} {url}")
+        return original(self, method, url, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.Client, "request", counted)
+
+    assert client.get(PANELS).status_code == 200
+    assert calls == []
+
+
+def test_no_truenas_configured_means_no_truenas_panel(client):
+    """§7d again: no credentials, no section — and no pill in the bar."""
+    body = client.get(PANELS).json()
+
+    assert body["truenas"] is None
+    assert [a["key"] for a in body["adapters"]] == ["overview"]
+
+
+def test_the_truenas_section_serves_what_the_worker_cached(
+    client, truenas_configured, monkeypatch
+):
+    real_truenas_snapshot(monkeypatch)
+
+    truenas = client.get(PANELS).json()["truenas"]
+
+    assert truenas["available"] is True
+    assert truenas["hostname"] == "truenas"
+    assert truenas["system"]["cores"] == 12
+    assert {p["name"] for p in truenas["pools"]} == {"tank", "backup"}
+    # used_pct is computed server-side, not in the browser.
+    tank = next(p for p in truenas["pools"] if p["name"] == "tank")
+    assert tank["used_pct"] == 60.0
+    assert len(truenas["disks"]) == 3
+    # The disk→pool map (topology fix) survives into the panel.
+    assert {d["name"]: d["pool"] for d in truenas["disks"]}["sda"] == "tank"
+
+
+# --- The adapter bar --------------------------------------------------------
+
+
+def test_the_adapter_bar_lists_only_configured_providers(
+    client, proxmox_configured, truenas_configured, monkeypatch
+):
+    """Overview leads; a pill appears for each configured provider, in order."""
+    real_snapshot(monkeypatch)
+    real_truenas_snapshot(monkeypatch)
+
+    adapters = client.get(PANELS).json()["adapters"]
+
+    assert [a["key"] for a in adapters] == ["overview", "proxmox", "truenas"]
+    # Overview carries no health dot; providers do.
+    assert adapters[0]["health"] == ""
+    assert adapters[1]["health"] in {"ok", "warn", "err"}
+
+
+def test_only_truenas_configured_yields_only_its_pill(
+    client, truenas_configured, monkeypatch
+):
+    real_truenas_snapshot(monkeypatch)
+
+    adapters = client.get(PANELS).json()["adapters"]
+
+    assert [a["key"] for a in adapters] == ["overview", "truenas"]
+
+
+def test_a_degraded_pool_lights_the_truenas_pill_red(
+    client, truenas_configured, monkeypatch
+):
+    """The default fake carries a DEGRADED pool — exactly the state the whole
+    feature exists to surface, so the pill must read `err`, not `warn`."""
+    real_truenas_snapshot(monkeypatch)
+
+    adapters = client.get(PANELS).json()["adapters"]
+    truenas = next(a for a in adapters if a["key"] == "truenas")
+
+    assert truenas["health"] == "err"
+
+
+# --- Public, with a wider boundary ------------------------------------------
+
+
+def test_the_truenas_panel_never_carries_a_disk_serial(
+    client, truenas_configured, monkeypatch
+):
+    """The fake ships a serial on every disk row on purpose. The `Disk`
+    dataclass drops it and `TrueNASDiskOut` never reintroduces it, so none may
+    appear anywhere in the response."""
+    real_truenas_snapshot(monkeypatch)
+
+    body = client.get(PANELS).content.decode()
+
+    for serial in ("WD-AAAA", "WD-BBBB", "ST-CCCC", "serial"):
+        assert serial not in body
+
+
+def test_the_truenas_panel_coarsens_the_raw_alert_text(
+    client, truenas_configured, monkeypatch
+):
+    """TN1's forward obligation for the PUBLIC surface: the raw `formatted`
+    alert text names a pool and a disk and is attacker-influenceable, so it is
+    dropped. The coarsened row keeps level + category (the `klass`) + time — the
+    operator's headline want, without the untrusted text."""
+    real_truenas_snapshot(monkeypatch)
+
+    body = client.get(PANELS).json()["truenas"]
+
+    # The raw message is gone, everywhere.
+    dumped = json.dumps(body)
+    assert "Pool backup is DEGRADED" not in dumped
+    assert "disk sdc has failed" not in dumped
+    # …but the coarsened alert is present and useful.
+    alert = body["alerts"][0]
+    assert alert["level"] == "CRITICAL"
+    assert alert["category"] == "ZpoolCapacityNotice"
+    assert "message" not in alert
+
+
+def test_a_failed_truenas_poll_gives_a_reason_that_names_nothing(
+    client, truenas_configured
+):
+    """The snapshot's own `detail` can quote an httpx error naming TRUENAS_HOST;
+    the public panel gets a closed string instead."""
+    from services.models import ProviderSnapshot
+
+    ProviderSnapshot.objects.create(
+        provider="truenas",
+        ok=False,
+        detail="ConnectError: [Errno 111] Connection refused to https://truenas.test",
+        fetched_at=timezone.now(),
+    )
+
+    body = client.get(PANELS).json()["truenas"]
+
+    assert body["available"] is False
+    assert body["detail"] == "TrueNAS state is unavailable — see Settings for the reason."
+    assert "truenas.test" not in json.dumps(body)
+    assert "Errno" not in json.dumps(body)
+
+
+def test_the_truenas_panel_never_carries_the_credential(
+    client, truenas_configured, monkeypatch
+):
+    real_truenas_snapshot(monkeypatch)
+
+    body = client.get(PANELS).content.decode()
+
+    assert "secret-key" not in body
+
+
+# --- Toggles reach the panel ------------------------------------------------
+
+
+def test_each_truenas_toggle_omits_only_its_subblock(
+    client, truenas_configured, monkeypatch
+):
+    real_truenas_snapshot(monkeypatch)
+    write_settings({"ui.panels.truenas_disks": False})
+
+    body = client.get(PANELS).json()
+
+    assert "truenas_disks" not in body["panels"]
+    assert body["truenas"]["disks"] is None
+    # The other three sub-blocks are untouched.
+    assert body["truenas"]["system"] is not None
+    assert body["truenas"]["pools"] is not None
+    assert body["truenas"]["alerts"] is not None
+
+
+def test_switching_off_all_truenas_panels_drops_the_block(
+    client, truenas_configured, monkeypatch
+):
+    real_truenas_snapshot(monkeypatch)
+    write_settings(
+        {
+            "ui.panels.truenas_system": False,
+            "ui.panels.truenas_pools": False,
+            "ui.panels.truenas_disks": False,
+            "ui.panels.truenas_alerts": False,
+        }
+    )
+
+    body = client.get(PANELS).json()
+
+    assert body["truenas"] is None
+    # The adapter pill still shows — the section is configured, just all-off.
+    assert "truenas" in [a["key"] for a in body["adapters"]]
+
+
+def test_truenas_polling_off_says_so_rather_than_freezing(
+    client, settings, monkeypatch
+):
+    settings.TRUENAS_HOST = "https://truenas.test"
+    settings.TRUENAS_API_KEY = "secret-key"
+    settings.TRUENAS_API_USER = "hvault"
+    write_settings({"truenas.polling.enabled": True})
+    real_truenas_snapshot(monkeypatch)
+    write_settings({"truenas.polling.enabled": False})
+
+    body = client.get(PANELS).json()["truenas"]
+
+    assert body["available"] is False
+    assert body["detail"] == "TrueNAS polling is switched off in Settings."
+    assert body["pools"] is None
+
+
+# --- The curated Overview ---------------------------------------------------
+
+
+def test_the_overview_carries_curated_stats_per_configured_adapter(
+    client, proxmox_configured, truenas_configured, monkeypatch
+):
+    real_snapshot(monkeypatch)
+    real_truenas_snapshot(monkeypatch)
+
+    overview = client.get(PANELS).json()["overview"]
+
+    keys = {a["key"] for a in overview["adapters"]}
+    assert keys == {"proxmox", "truenas"}
+    truenas = next(a for a in overview["adapters"] if a["key"] == "truenas")
+    labels = [s["label"] for s in truenas["stats"]]
+    assert "Pools healthy" in labels
+    assert "Capacity used" in labels
+    assert "Critical alerts" in labels
+    # The degraded pool + critical alert make it the loud adapter.
+    assert truenas["health"] == "err"
+
+
+def test_the_overview_is_present_with_no_provider_configured(client):
+    """It works with nothing configured, like the status panel — the Overview
+    pill must always land on a usable page."""
+    body = client.get(PANELS).json()
+
+    assert body["overview"] == {"adapters": []}

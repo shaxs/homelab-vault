@@ -66,6 +66,24 @@ x-app-env: &app-env
   PROXMOX_VERIFY_TLS: ${PROXMOX_VERIFY_TLS:-False}
   PROXMOX_TIMEOUT_S: ${PROXMOX_TIMEOUT_S:-15.0}
 
+  # TrueNAS SCALE, read-only (TN2; WebSocket JSON-RPC transport since TN-WS).
+  # Shared for the same reason as PROXMOX_*: only `truenas-worker` calls the box,
+  # but `web` reads these to show configured/not-configured on the settings
+  # screen and hide the panels when unset. TRUENAS_HOST must carry a scheme; the
+  # app always connects wss:// regardless (TrueNAS 25.04+ REVOKES an API key it
+  # sees over plain HTTP, so a plaintext attempt would destroy the credential).
+  # TRUENAS_API_KEY is linked to TRUENAS_API_USER — a TrueNAS user holding the
+  # Read-Only Admin role (25.04+ keys are user-linked).
+  TRUENAS_HOST: ${TRUENAS_HOST:-}
+  TRUENAS_API_KEY: ${TRUENAS_API_KEY:-}
+  TRUENAS_API_USER: ${TRUENAS_API_USER:-}
+  # Explicit and named, never a hidden verify=False. A homelab TrueNAS commonly
+  # presents a self-signed or private-CA certificate, so this defaults off and the
+  # app warns once per process when it is (same trade-off as PROXMOX_VERIFY_TLS,
+  # and the key rides every request, so turn it on once the box has a trusted cert).
+  TRUENAS_VERIFY_TLS: ${TRUENAS_VERIFY_TLS:-False}
+  TRUENAS_TIMEOUT_S: ${TRUENAS_TIMEOUT_S:-15.0}
+
   # SSRF policy (§4c). The worker needs this too — it validates every health URL
   # through the same code path.
   PROBE_ALLOWED_NETWORKS: ${PROBE_ALLOWED_NETWORKS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10}
@@ -205,6 +223,28 @@ services:
       web:
         condition: service_healthy
     command: python manage.py proxmox_worker
+    environment:
+      <<: *app-env
+
+  # The fifth service (TN2). **Its own process, scoped to TrueNAS alone** — not a
+  # second loop inside `proxmox-worker`, and not a shared registry poll. A single
+  # worker looping every provider would poll TrueNAS under Proxmox's polling switch
+  # and beat it into the heartbeat table as "proxmox", so TrueNAS would have no
+  # heartbeat of its own and would stop being polled whenever Proxmox polling was
+  # off. Independent death and cadence (§7c/§5a) require an independent worker.
+  #
+  # Safe to leave running with no TrueNAS configured: the pass short-circuits, the
+  # worker still beats, nothing else changes. No volumes — it writes only Postgres.
+  truenas-worker:
+    image: ghcr.io/shaxs/homelab-vault:${IMAGE_TAG:-latest}
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    command: python manage.py truenas_worker
     environment:
       <<: *app-env
 

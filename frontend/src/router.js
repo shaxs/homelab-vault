@@ -24,6 +24,21 @@ import { ref } from 'vue'
 /** `/services/{slug}` — the one route with a parameter. */
 const RECORD_RE = /^\/services\/([^/]+)\/?$/
 
+/**
+ * `/dashboard/{adapter}` — the adapter-bar sub-routes (TN4). `/dashboard` is the
+ * curated Overview; `/dashboard/proxmox` and `/dashboard/truenas` are the
+ * per-adapter sections, real and bookmarkable rather than internal tab state.
+ * An unknown adapter still resolves here and the Dashboard degrades to Overview.
+ */
+const DASHBOARD_RE = /^\/dashboard\/([^/]+)\/?$/
+
+/**
+ * `/settings/{section}` — the sectioned settings screen (TN-SET), the same
+ * idiom as the adapter routes: bare `/settings` is the first section, an
+ * unknown slug degrades there too, and every section is bookmarkable.
+ */
+const SETTINGS_RE = /^\/settings\/([^/]+)\/?$/
+
 const STATIC_ROUTES = {
   '/': { name: 'home' },
   '/catalog': { name: 'catalog' },
@@ -41,9 +56,17 @@ const STATIC_ROUTES = {
 export function resolve(pathname) {
   const path = (pathname || '/').replace(/\/+$/, '') || '/'
   if (STATIC_ROUTES[path]) return { ...STATIC_ROUTES[path], path }
-  const match = RECORD_RE.exec(path)
-  if (match) {
-    return { name: 'record', slug: decodeSlug(match[1]), path }
+  const record = RECORD_RE.exec(path)
+  if (record) {
+    return { name: 'record', slug: decodeSlug(record[1]), path }
+  }
+  const adapter = DASHBOARD_RE.exec(path)
+  if (adapter) {
+    return { name: 'dashboard', adapter: decodeSlug(adapter[1]), path }
+  }
+  const section = SETTINGS_RE.exec(path)
+  if (section) {
+    return { name: 'settings', section: decodeSlug(section[1]), path }
   }
   return { name: 'notFound', path }
 }
@@ -68,6 +91,15 @@ function decodeSlug(segment) {
 export function pathFor(name, params = {}) {
   if (name === 'record') return `/services/${encodeURIComponent(params.slug)}`
   if (name === 'home') return '/'
+  // `/dashboard/{adapter}`, or bare `/dashboard` for Overview (no adapter, or the
+  // `overview` pseudo-adapter — both mean "the Overview branch").
+  if (name === 'dashboard' && params.adapter && params.adapter !== 'overview') {
+    return `/dashboard/${encodeURIComponent(params.adapter)}`
+  }
+  // `/settings/{section}` (TN-SET); bare `/settings` is the first section.
+  if (name === 'settings' && params.section) {
+    return `/settings/${encodeURIComponent(params.section)}`
+  }
   return `/${name}`
 }
 
