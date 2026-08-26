@@ -277,10 +277,16 @@ def get_panels(request):
       admin-scoped on the settings screen.
     - **`ssl_fingerprint`**, which Proxmox returns from `/nodes` and the
       provider seam never carries.
+    - **TrueNAS disk serials.** `/disk` carries a serial per drive; the `Disk`
+      dataclass omits it and `TrueNASDiskOut` never reintroduces it.
+    - **Raw TrueNAS alert text.** A native alert's `formatted` message names
+      pools/datasets and is attacker-influenceable, so the public alert is
+      coarsened to `level` + `category` (the TrueNAS `klass`) + time; the raw
+      text reaches only the `sanitize()`d Discord path, never this endpoint.
 
     No outbound call happens here — this reads `provider_snapshots`, `settings`
-    and `services`, which is what makes §7c's "Proxmox unreachable never blocks
-    a read" structural rather than a timeout to tune.
+    and `services`, which is what makes §7c's "Proxmox/TrueNAS unreachable never
+    blocks a read" structural rather than a timeout to tune.
     """
     return panels.build_panels()
 
@@ -709,7 +715,19 @@ def _provider_status_rows() -> list[dict]:
         snapshot = snapshots.get(provider.name)
         guests = snapshot.guests if snapshot else []
         if not configured:
-            detail, usable = "Not configured.", False
+            # A provider may distinguish "nothing set" (a choice, stays quiet)
+            # from "partly set" (a mistake worth naming) via an optional
+            # env-only `configuration_gaps()` — discovered by reflection like
+            # `report()`, so providers without one are simply "Not configured."
+            # The TN-WS case: a TN2-era deploy with host+key set but the new
+            # TRUENAS_API_USER missing must say which variable is absent.
+            gaps = getattr(provider, "configuration_gaps", lambda: [])()
+            detail = (
+                f"Partly configured — missing {', '.join(gaps)}."
+                if gaps
+                else "Not configured."
+            )
+            usable = False
         elif snapshot is None:
             detail, usable = "Waiting for the first poll.", False
         else:

@@ -18,7 +18,13 @@ import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { api } from '../api.js'
+import { navigate } from '../router.js'
 import SettingsScreen from './SettingsScreen.vue'
+
+// The component navigates via the router on rail clicks; mocking it keeps the
+// URL out of jsdom and lets the rail tests assert the call (same pattern as
+// Dashboard.test.js).
+vi.mock('../router.js', () => ({ navigate: vi.fn() }))
 
 const SPECS = [
   {
@@ -79,9 +85,12 @@ function payload(values = {}, extra = {}) {
   }
 }
 
-async function open(values, extra) {
+async function open(values, extra, section) {
+  // TN-SET: one section renders at a time, so a test mounts the section its
+  // assertions live in. Omitted -> the first section ('Health checks' in the
+  // default payload), exactly like the bare /settings route.
   vi.spyOn(api, 'getSettings').mockResolvedValue(payload(values, extra))
-  const wrapper = mount(SettingsScreen)
+  const wrapper = mount(SettingsScreen, { props: section ? { section } : {} })
   await new Promise((resolve) => setTimeout(resolve, 0))
   await wrapper.vm.$nextTick()
   return wrapper
@@ -127,10 +136,11 @@ describe('the derived worker-stall row', () => {
 
 describe('the "Sends a message when" block', () => {
   it('describes the thresholds actually configured', async () => {
-    const wrapper = await open({
-      'health.fail_threshold': 5,
-      'health.recovery_threshold': 1,
-    })
+    const wrapper = await open(
+      { 'health.fail_threshold': 5, 'health.recovery_threshold': 1 },
+      undefined,
+      'notifications',
+    )
     const text = wrapper.text()
 
     expect(text).toContain('Sends a message when')
@@ -141,13 +151,13 @@ describe('the "Sends a message when" block', () => {
 
   it('says a silenced service is still checked', async () => {
     // §4's separation, in the one place an operator reads about notifications.
-    const wrapper = await open()
+    const wrapper = await open(undefined, undefined, 'notifications')
     expect(wrapper.text()).toContain('still checked')
     wrapper.unmount()
   })
 
   it('names the worker stall as a trigger', async () => {
-    const wrapper = await open()
+    const wrapper = await open(undefined, undefined, 'notifications')
     expect(wrapper.text()).toContain('stops reporting for 3 minutes')
     wrapper.unmount()
   })
@@ -172,6 +182,7 @@ describe('the Proxmox provider status card (§7a, §7b)', () => {
         ambiguous_address_count: 6,
         last_polled_at: '2026-08-06T12:00:00Z',
       }),
+      'proxmox',
     )
     expect(wrapper.text()).toContain('Working')
     expect(wrapper.text()).toContain('37 guests')
@@ -195,6 +206,7 @@ describe('the Proxmox provider status card (§7a, §7b)', () => {
         ambiguous_address_count: 0,
         last_polled_at: '2026-08-06T12:00:00Z',
       }),
+      'proxmox',
     )
     expect(wrapper.text()).toContain('Not working')
     expect(wrapper.text()).toContain('PVEAuditor')
@@ -215,6 +227,7 @@ describe('the Proxmox provider status card (§7a, §7b)', () => {
         ambiguous_address_count: 0,
         last_polled_at: null,
       }),
+      'proxmox',
     )
     const text = wrapper.text()
     expect(text).toMatch(/Docker resolve to their|resolve to their/i)
@@ -239,6 +252,7 @@ describe('the Proxmox provider status card (§7a, §7b)', () => {
         privileges: ['Sys.Audit', 'VM.Audit', 'VM.GuestAgent.Audit'],
         last_polled_at: '2026-08-06T12:00:00Z',
       }),
+      'proxmox',
     )
     const text = wrapper.text()
     expect(text).toContain('Token privileges')
@@ -259,6 +273,7 @@ describe('the Proxmox provider status card (§7a, §7b)', () => {
         privileges: [],
         last_polled_at: '2026-08-06T12:00:00Z',
       }),
+      'proxmox',
     )
     expect(wrapper.text()).not.toContain('Token privileges')
     wrapper.unmount()
@@ -266,7 +281,7 @@ describe('the Proxmox provider status card (§7a, §7b)', () => {
 
   it('renders no provider card at all when none is configured', async () => {
     // §7d: no token -> no panel, nothing to explain away.
-    const wrapper = await open({}, { ...PROXMOX_SECTION, providers: [] })
+    const wrapper = await open({}, { ...PROXMOX_SECTION, providers: [] }, 'proxmox')
     expect(wrapper.text()).not.toContain('Provider status')
     wrapper.unmount()
   })
@@ -353,7 +368,7 @@ describe('validation follow-ups (2026-08-07)', () => {
           note: 'Set in .env.',
         },
       ],
-    })
+    }, 'notifications')
     const mixed = wrapper
       .findAll('.settings-badge')
       .find((el) => el.text() === 'Mixed')
@@ -375,10 +390,130 @@ describe('validation follow-ups (2026-08-07)', () => {
 
   it('hosts the Export JSON and API links, which left the top bar', async () => {
     // Finding 5: the header was accumulating every link in the app.
-    const wrapper = await open()
+    const wrapper = await open(undefined, undefined, 'data-and-api')
     const hrefs = wrapper.findAll('a').map((a) => a.attributes('href'))
     expect(hrefs).toContain('/api/v1/export/json')
     expect(hrefs).toContain('/api/v1/docs')
+    wrapper.unmount()
+  })
+})
+
+describe('the TrueNAS settings card (TN2)', () => {
+  // TN2 added the backend TrueNAS section and its TRUENAS_HOST/API_KEY .env
+  // rows; TN-WS added the user-linked username as a third credential. Without
+  // the ENV_SECTION mapping in this component they fall through to the Access
+  // card — the .env-panel half of the settings producer/consumer pair.
+  const TRUENAS_FIXTURE = {
+    sections: ['Health checks', 'Notifications', 'TrueNAS'],
+    environment: [
+      {
+        label: 'TrueNAS host',
+        env_var: 'TRUENAS_HOST',
+        status: 'Not configured',
+        note: 'The SCALE API endpoint.',
+      },
+      {
+        label: 'TrueNAS API key',
+        env_var: 'TRUENAS_API_KEY',
+        status: 'Not configured',
+        note: 'A read-only key.',
+      },
+      {
+        label: 'TrueNAS API user',
+        env_var: 'TRUENAS_API_USER',
+        status: 'Not configured',
+        note: 'The TrueNAS username the API key is linked to.',
+      },
+    ],
+  }
+
+  it('files the TRUENAS_* .env rows under the TrueNAS card', async () => {
+    const wrapper = await open(undefined, TRUENAS_FIXTURE, 'truenas')
+    const truenas = wrapper
+      .findAll('.settings-card')
+      .find((c) => c.find('.settings-card-title').text() === 'TrueNAS')
+    expect(truenas).toBeTruthy()
+    expect(truenas.text()).toContain('TrueNAS host')
+    expect(truenas.text()).toContain('TRUENAS_API_KEY')
+    expect(truenas.text()).toContain('TRUENAS_API_USER')
+    wrapper.unmount()
+  })
+
+  it('keeps them off the Access card', async () => {
+    const wrapper = await open(undefined, TRUENAS_FIXTURE, 'access')
+    const access = wrapper
+      .findAll('.settings-card')
+      .find((c) => c.find('.settings-card-title').text() === 'Access')
+    expect(access).toBeTruthy()
+    expect(access.text()).not.toContain('TRUENAS_HOST')
+    expect(access.text()).not.toContain('TRUENAS_API_USER')
+    wrapper.unmount()
+  })
+})
+
+describe('the section rail (TN-SET)', () => {
+  it('lists every section plus the links card, and marks the active one', async () => {
+    const wrapper = await open(undefined, undefined, 'notifications')
+    const items = wrapper.findAll('.settings-rail-item')
+    // Backend sections, then the two frontend-owned cards (Access is appended
+    // by apply(), the links card by the rail itself).
+    expect(items.map((i) => i.text())).toEqual([
+      'Health checks',
+      'Notifications',
+      'Access',
+      'Data and API',
+    ])
+    const active = items.filter((i) => i.classes()).filter((i) => i.classes().includes('active'))
+    expect(active).toHaveLength(1)
+    expect(active[0].text()).toBe('Notifications')
+    wrapper.unmount()
+  })
+
+  it('renders only the active section card', async () => {
+    const wrapper = await open(undefined, undefined, 'notifications')
+    const titles = wrapper
+      .findAll('.settings-card-title')
+      .map((t) => t.text())
+    expect(titles).toEqual(['Notifications'])
+    wrapper.unmount()
+  })
+
+  it('routes on a rail click rather than keeping tab state', async () => {
+    const wrapper = await open()
+    const target = wrapper
+      .findAll('.settings-rail-item')
+      .find((i) => i.text() === 'Notifications')
+    await target.trigger('click')
+    expect(navigate).toHaveBeenCalledWith('settings', { section: 'notifications' })
+    wrapper.unmount()
+  })
+
+  it('degrades an unknown section to the first one, like the adapter bar', async () => {
+    const wrapper = await open(undefined, undefined, 'nonsense')
+    const titles = wrapper.findAll('.settings-card-title').map((t) => t.text())
+    expect(titles).toEqual(['Health checks'])
+    wrapper.unmount()
+  })
+
+  it('marks a section holding unsaved edits while another is on screen', async () => {
+    // The savebar is global; the dot is how you find WHERE the edit lives.
+    const wrapper = await open(undefined, undefined, 'notifications')
+    await wrapper.find('.settings-toggle').trigger('click') // dirty Notifications
+    const dirty = wrapper
+      .findAll('.settings-rail-item')
+      .filter((i) => i.find('.settings-rail-dirty').exists())
+    expect(dirty.map((i) => i.text().replace(/\s+$/, ''))).toEqual(['Notifications'])
+    wrapper.unmount()
+  })
+
+  it('keeps unsaved edits when switching sections — one draft, not per-page state', async () => {
+    const wrapper = await open(undefined, undefined, 'notifications')
+    await wrapper.find('.settings-toggle').trigger('click')
+    // Simulate the route change the rail click causes.
+    await wrapper.setProps({ section: 'health-checks' })
+    expect(wrapper.text()).toContain('1 unsaved change')
+    await wrapper.setProps({ section: 'notifications' })
+    expect(wrapper.find('.settings-toggle').classes()).toContain('on')
     wrapper.unmount()
   })
 })
@@ -401,9 +536,7 @@ describe('the mention ID fields (BACKLOG.1)', () => {
   }
 
   it('renders a real input, not the read-only env_ref fallback', async () => {
-    const wrapper = await open(undefined, {
-      settings: [...SPECS, MENTION_SPEC],
-    })
+    const wrapper = await open(undefined, { settings: [...SPECS, MENTION_SPEC] }, 'notifications')
     const field = mentionInput(wrapper)
     expect(field).toBeTruthy()
     expect(field.attributes('placeholder')).toMatch(/nobody/i)
@@ -413,9 +546,7 @@ describe('the mention ID fields (BACKLOG.1)', () => {
   it('filters to digits as you type — an ID field, never a name field', async () => {
     // The server refuses anything but a snowflake regardless; this is the
     // convenience layer saying the same thing (§6a: the API is the boundary).
-    const wrapper = await open(undefined, {
-      settings: [...SPECS, MENTION_SPEC],
-    })
+    const wrapper = await open(undefined, { settings: [...SPECS, MENTION_SPEC] }, 'notifications')
     const field = mentionInput(wrapper)
     await field.setValue('@everyone123456789012345678')
     expect(field.element.value).toBe('123456789012345678')
@@ -425,7 +556,7 @@ describe('the mention ID fields (BACKLOG.1)', () => {
 
 describe('the Access card is one exclusive choice (BACKLOG.4)', () => {
   it('groups the three modes as a radio group with exactly one checked', async () => {
-    const wrapper = await open(undefined, { auth_mode: 'open-writes' })
+    const wrapper = await open(undefined, { auth_mode: 'open-writes' }, 'access')
     const group = wrapper.find('[role="radiogroup"]')
     expect(group.exists()).toBe(true)
 
@@ -440,7 +571,7 @@ describe('the Access card is one exclusive choice (BACKLOG.4)', () => {
   })
 
   it('says where the mode is actually set — .env, not this screen', async () => {
-    const wrapper = await open()
+    const wrapper = await open(undefined, undefined, 'access')
     const caption = wrapper.find('.settings-modes-caption')
     expect(caption.exists()).toBe(true)
     expect(caption.text()).toContain('HOMELABVAULT_AUTH_MODE')
@@ -449,7 +580,7 @@ describe('the Access card is one exclusive choice (BACKLOG.4)', () => {
   })
 
   it('draws a radio indicator on every mode row', async () => {
-    const wrapper = await open()
+    const wrapper = await open(undefined, undefined, 'access')
     expect(wrapper.findAll('.settings-mode-radio').length).toBe(3)
     wrapper.unmount()
   })
@@ -479,7 +610,7 @@ describe('the cluster-read failure reason (audit S5)', () => {
             'Proxmox answered 403 for /cluster/status. The token may lack Sys.Audit.',
         },
       ],
-    })
+    }, 'proxmox')
     expect(wrapper.text()).toContain('Cluster panel:')
     expect(wrapper.text()).toContain('Sys.Audit')
     expect(wrapper.text()).toContain('Guest locations keep working')
@@ -490,7 +621,7 @@ describe('the cluster-read failure reason (audit S5)', () => {
     const wrapper = await open(undefined, {
       sections: ['Health checks', 'Notifications', 'Proxmox'],
       providers: [PROVIDER],
-    })
+    }, 'proxmox')
     expect(wrapper.text()).not.toContain('Cluster panel:')
     wrapper.unmount()
   })
@@ -509,7 +640,7 @@ describe('saving refreshes the public settings the rest of the app reads', () =>
       values: { 'ui.catalog.density': 'comfortable' },
     })
 
-    const wrapper = await open()
+    const wrapper = await open(undefined, undefined, 'notifications')
     const toggle = wrapper.find('.settings-toggle')
     await toggle.trigger('click') // dirty the form
     const save = wrapper.findAll('button').find((b) => b.text().includes('Save changes'))

@@ -477,3 +477,64 @@ def provider_recovery_message(provider: str, failures: int) -> dict:
             "footer": {"text": name},
         },
     }
+
+
+def provider_alert_message(provider: str, alert) -> dict:
+    """A provider's OWN alerting system raised a critical/high alert (TN2).
+
+    Distinct from `provider_failure_message`, which is about *our* poll failing:
+    this forwards the provider's native alert — a TrueNAS `/alert/list` entry — so
+    the operator hears about a degrading disk from the box that should have
+    flagged it, which is the whole reason for this feature.
+
+    **`alert.message` is provider-authored `formatted` text** naming pools or
+    datasets that anyone able to name a dataset on the box could influence, so it
+    is treated exactly like a probed page title: `sanitize()`d here (control
+    characters removed, markdown escaped, length-capped), and
+    `allowed_mentions.parse=[]` in `build_payload` keeps a `@everyone` inside it
+    inert. `level` is a closed TrueNAS enum but is sanitised too — defence in
+    depth costs nothing and the alternative is trusting the wire.
+    """
+    name = sanitize(provider, limit=60)
+    level = sanitize(alert.level or "ALERT", limit=20)
+    text = sanitize(alert.message, limit=MAX_FIELD_VALUE)
+    return {
+        "content": f"🔴 **{name}** {level} alert: {text}",
+        "embed": {
+            "title": f"🔴 {name} raised a {level} alert",
+            "color": COLOR_DOWN,
+            "fields": [
+                {"name": "Event", "value": "provider alert", "inline": True},
+                {"name": "Level", "value": level, "inline": True},
+                {"name": "Alert", "value": text, "inline": False},
+            ],
+            "footer": {"text": name},
+        },
+    }
+
+
+def provider_alert_cleared_message(provider: str, count: int) -> dict:
+    """One or more of a provider's native alerts cleared (TN2).
+
+    Edge-triggered like every recovery here: announced once, on the pass a
+    previously-notified alert is no longer active. It names a count rather than
+    the cleared alert's text — the text is gone from `/alert/list`, and a recovery
+    message's job is to say "go look, it is fine now", not to re-quote a message
+    that no longer exists. No provider-authored text rides this path.
+    """
+    name = sanitize(provider, limit=60)
+    plural = "s" if count != 1 else ""
+    return {
+        "content": (
+            f"🟢 **{name}** — {count} alert{plural} cleared."
+        ),
+        "embed": {
+            "title": f"🟢 {name} alert{plural} cleared",
+            "color": COLOR_UP,
+            "fields": [
+                {"name": "Event", "value": "provider alert cleared", "inline": True},
+                {"name": "Cleared", "value": str(count), "inline": True},
+            ],
+            "footer": {"text": name},
+        },
+    }

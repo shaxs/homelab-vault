@@ -22,8 +22,17 @@ from services.views import spa_index
 
 pytestmark = pytest.mark.django_db
 
-#: Bookmarkable app routes. `/services/{slug}` is the parameterised one.
-SPA_PATHS = ["/", "/catalog", "/dashboard", "/settings", "/services/jellyfin"]
+#: Bookmarkable app routes. `/services/{slug}`, `/dashboard/{adapter}` (TN4)
+#: and `/settings/{section}` (TN-SET) are the parameterised ones.
+SPA_PATHS = [
+    "/",
+    "/catalog",
+    "/dashboard",
+    "/dashboard/truenas",
+    "/settings",
+    "/settings/notifications",
+    "/services/jellyfin",
+]
 
 
 @pytest.mark.parametrize("path", SPA_PATHS)
@@ -92,24 +101,30 @@ def test_the_spa_route_list_matches_the_frontend_router():
     declared = set(re.findall(r"'(/[^']*)':", router))
 
     served = set()
-    record_routes = []
+    regex_routes = []
     for pattern in get_resolver().url_patterns:
         if getattr(pattern, "callback", None) is not spa_index:
             continue
         route = str(pattern.pattern)
-        # RegexPattern stringifies to its raw regex; that is the parameterised
-        # record route, which the frontend owns with RECORD_RE, not a key in
+        # RegexPattern stringifies to its raw regex; those are the parameterised
+        # routes the frontend owns with RECORD_RE / DASHBOARD_RE, not keys in
         # STATIC_ROUTES — asserted separately below.
         if route.startswith("^"):
-            record_routes.append(route)
+            regex_routes.append(route)
             continue
         served.add("/" + route)
 
     assert declared == served
 
-    # The parameterised route exists on both sides too: exactly one regex
-    # route serves the SPA, it is the record route, and the frontend builds
-    # and parses the same shape.
-    assert len(record_routes) == 1
-    assert "services/" in record_routes[0]
+    # The parameterised routes exist on both sides too: three regex routes serve
+    # the SPA — record, adapter (TN4) and settings section (TN-SET) — and the
+    # frontend builds and parses the same shapes (`RECORD_RE`, `DASHBOARD_RE`,
+    # `SETTINGS_RE`).
+    joined = " ".join(regex_routes)
+    assert len(regex_routes) == 3
+    assert "services/" in joined
+    assert "dashboard/" in joined
+    assert "settings/" in joined
     assert "/services/" in router
+    assert "/dashboard/" in router
+    assert "/settings/" in router

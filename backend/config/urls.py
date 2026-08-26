@@ -105,7 +105,17 @@ urlpatterns = [
     path("", spa_index, name="spa-index"),
     path("catalog", spa_index, name="spa-catalog"),
     path("dashboard", spa_index, name="spa-dashboard"),
+    # `/dashboard/{adapter}` — the adapter-bar sub-routes (TN4). A parameterised
+    # route like the record one below: the frontend owns it with `DASHBOARD_RE`,
+    # and a bookmark to `/dashboard/truenas` is a cold server load, so Django has
+    # to serve the SPA for it too. `[^/]+` (one segment) keeps `/dashboard/x/y`
+    # a 404, matching the router's own resolution.
+    re_path(r"^dashboard/(?P<adapter>[^/]+)/?$", spa_index, name="spa-dashboard-adapter"),
     path("settings", spa_index, name="spa-settings"),
+    # `/settings/{section}` — the sectioned settings screen (TN-SET), same shape
+    # as the adapter route above: a bookmark is a cold server load, and the
+    # frontend owns the parameter with `SETTINGS_RE`. One segment only.
+    re_path(r"^settings/(?P<section>[^/]+)/?$", spa_index, name="spa-settings-section"),
     # The slug pattern matches the API's, so a service reachable at
     # `/api/v1/services/{slug}` is reachable at `/services/{slug}`.
     re_path(r"^services/(?P<slug>[^/]+)/?$", spa_index, name="spa-record"),

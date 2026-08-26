@@ -204,6 +204,23 @@ describe('the sidebar', () => {
     wrapper.unmount()
   })
 
+  it('labels the TrueNAS worker properly, not as the raw key (TN2)', async () => {
+    // Without its WORKER_LABELS entry the third worker renders as "truenas
+    // reporting" (the raw key). It must read "TrueNAS worker" — and TrueNAS is
+    // not title-case, so a generic capitalise would give the wrong "Truenas".
+    const wrapper = await openAt('/catalog', {
+      workers: [
+        { name: 'health', state: 'ok', stale: false, last_beat_at: '2026-08-07T10:00:00Z' },
+        { name: 'proxmox', state: 'ok', stale: false, last_beat_at: '2026-08-07T10:00:00Z' },
+        { name: 'truenas', state: 'ok', stale: false, last_beat_at: '2026-08-07T10:00:00Z' },
+      ],
+    })
+    const foot = wrapper.find('.side-foot').text()
+    expect(foot).toContain('TrueNAS worker reporting')
+    expect(foot).not.toContain('truenas reporting')
+    wrapper.unmount()
+  })
+
   it('says which worker stopped, rather than going quiet', async () => {
     const wrapper = await openAt('/catalog', {
       workers: [

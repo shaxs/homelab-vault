@@ -34,6 +34,10 @@ HEALTH_WORKER = "health"
 #: table — which is the contract in the module docstring being kept rather than
 #: merely asserted.
 PROXMOX_WORKER = "proxmox"
+#: The TrueNAS worker's key (TN2). A third worker, added exactly as V1.4 predicted
+#: the second would be: one constant, one `beat()` call, and the deadman judges it
+#: by its own declared interval with no edit — the contract kept a second time.
+TRUENAS_WORKER = "truenas"
 
 
 @transaction.atomic

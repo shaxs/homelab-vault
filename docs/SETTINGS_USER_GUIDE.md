@@ -1,6 +1,6 @@
 # Settings and Access User Guide
 
-**Last Updated**: 2026-08-10
+**Last Updated**: 2026-08-12
 
 ## Overview
 
@@ -31,17 +31,49 @@ not be asked again just to open Settings.
 deliberate: the screen lists which credentials are configured and can switch
 notifications off, and neither belongs in front of an anonymous visitor.
 
+## Finding your way around
+
+Settings shows **one section at a time**. A list on the left — **Appearance,
+Panels, Health checks, Notifications, Proxmox, TrueNAS, Access, Data and API**
+— picks which one; on a phone the same list is a row of chips above the
+content that scrolls sideways. Each section has its own address
+(`/settings/notifications`, `/settings/truenas`, …), so a bookmark or a link
+lands on the right section after a reload.
+
+Switching sections never loses an edit: unsaved changes stay put, the save bar
+stays visible, and any section holding an unsaved edit shows a small amber dot
+in the list so you can find your way back to it.
+
 ## What you can change here, and what you cannot
 
-Editing works like a form, not like a light switch:
+Not every row on this screen is editable, and each card tells you what it
+holds with a small chip beside its title:
 
-1. Change whatever you want. Each changed row grows a small **changed** badge.
+- **Editable** — every value on the card can be changed here, and takes effect
+  without a restart.
+- **Read-only** — every value on the card comes from `.env`. The card shows
+  what is set, but changing anything means editing `.env` and restarting the
+  server. There is deliberately nothing to click.
+- **Mixed** — both kinds on one card. The TrueNAS card is the usual example:
+  the polling toggle and interval save from here, while the host, key and
+  username sit below in recessed grey blocks marked **MANAGED IN .ENV**.
+
+Hovering a chip shows the same explanation in place. The recessed grey blocks
+are the `.env` half everywhere they appear — variable name, a status instead of
+a value, no control.
+
+For the rows you *can* edit, editing works like a form, not like a light
+switch:
+
+1. Change what you want. Each changed row grows a small **changed** badge.
 2. A bar appears at the bottom of the screen — *"2 unsaved changes · Poll
-   interval · Discord notifications"*.
+   interval · Discord notifications"* — and any section holding an unsaved
+   change shows a small amber dot in the section list.
 3. Press **Save changes** to commit, or **Discard** to put everything back.
 
-**Nothing is saved until you press Save changes.** Leaving the screen with the
-bar showing throws the edits away.
+**Nothing is saved until you press Save changes.** Switching sections keeps
+your edits; leaving the Settings screen entirely with the bar still showing
+throws them away.
 
 One row does not work this way: **Theme** applies the instant you click it and
 is never part of the save bar, because it is stored in your browser rather than
@@ -174,6 +206,7 @@ when you change them:
 | It then passes *Recovery threshold* checks in a row | announced as recovered |
 | A worker goes quiet for three poll intervals | announced as stalled, then again when it comes back |
 | A Proxmox poll fails **3 times in a row** | announced as failing, once; announced again when it recovers |
+| **TrueNAS raises a critical or high alert** of its own (a failing disk, a degraded pool) | forwarded once as it appears; announced once when it clears |
 
 **Recovery is damped on purpose.** A service that flaps up and down would
 otherwise post on every bounce, and what people do about a channel like that is
@@ -291,6 +324,47 @@ derive. They never overwrite each other.
 > disagree again the next time the guest moves, and you accept forever. If you
 > want the value to track, unpin it. If you want it frozen, type it. Those are
 > the only two things anyone actually wants.
+
+### TrueNAS
+
+**TrueNAS polling** on/off, and a **poll interval** (default 120s, minimum 30s).
+Polling is **off by default**; turning it on takes effect on the TrueNAS worker's
+next cycle, with nothing to restart — the same shape as the Proxmox card, and a
+*separate* worker, so one provider being slow or down never affects the other.
+
+The card needs **three** values set in `.env` and the server restarted:
+
+- **`TRUENAS_HOST`** — the box's address, with a scheme. Whatever scheme you
+  write, the app always talks to TrueNAS over TLS (`wss://`): TrueNAS
+  **revokes** any API key it sees on a plain-HTTP connection, so never test
+  your key with anything that isn't encrypted.
+- **`TRUENAS_API_USER`** — the TrueNAS username the key belongs to. On TrueNAS
+  25.04+ API keys are *linked to a user*, so the key alone no longer identifies
+  the account. The intended shape is a dedicated service account: create a user
+  (no shell access needed), add it to the built-in
+  `truenas_readonly_administrators` group so it holds the **Read-Only Admin**
+  role, and create the API key on that user.
+- **`TRUENAS_API_KEY`** — that user's API key. Like every credential it is
+  never shown here or returned by the API — the card reports only whether it
+  is set.
+
+If some of the three are set and some are not, the provider row below says
+exactly which variable is missing rather than a bare "Not configured" — the
+usual case being an older deployment that predates the username.
+
+**Why this exists: TrueNAS watches your storage, and Homelab Vault watches that it
+did.** The reason for the feature is a disk that degraded for months unnoticed
+because nobody was looking at TrueNAS often enough. So once polling is on,
+TrueNAS's own critical and high alerts — a failing disk, a degraded pool — are
+**forwarded to Discord** (when notifications are on), once as each appears and
+once when it clears, on the same edge-triggered rules as every other alert here.
+A worker on the foot of the sidebar reports the TrueNAS poller's own health, next
+to the health and Proxmox workers.
+
+> **The pools, disks and alerts themselves get their own dashboard section in a
+> later step.** This step wires the polling, the worker and the Discord
+> forwarding; the on-screen panels for capacity, SMART and the alert feed arrive
+> with the dashboard's adapter bar.
 
 ### Access
 

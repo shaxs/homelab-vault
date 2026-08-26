@@ -30,6 +30,7 @@ any provider fronting a permissioned API can be blind the same way.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 
@@ -209,6 +210,53 @@ class ProviderStatus:
         }
 
 
+#: The alert levels that reach Discord (TN2). "Critical/high" is everything at
+#: ERROR and above — the levels that mean something is already wrong rather than
+#: merely noteworthy. Lives here, on the shared `ProviderAlert` contract, so the
+#: provider-agnostic forwarder in `poll.py` and any provider that raises alerts
+#: agree on one threshold instead of each keeping their own copy to drift.
+CRITICAL_ALERT_LEVELS = frozenset({"ERROR", "CRITICAL", "ALERT", "EMERGENCY"})
+
+
+@dataclass(frozen=True)
+class ProviderAlert:
+    """One active alert raised by a provider's own alerting system.
+
+    Provider-neutral on purpose: the poll pass diffs these by `key` to decide
+    which alerts are *newly* firing (edge-triggered Discord, like every other
+    alert here), so any future provider that surfaces alerts inherits that
+    de-dup with no new machinery. `key` is the provider's own stable alert id —
+    constant while an alert persists, different when a new one appears.
+
+    `message` can be provider-authored text naming pools or datasets, so it is
+    treated as untrusted exactly like a probed page title: `sanitize()` before
+    it reaches Discord, and the public panel coarsens what it forwards.
+
+    `category` is the alert's **type identifier** — TrueNAS's `klass`
+    (e.g. `SMARTError`, `ZpoolCapacityNotice`) — a provider-defined enum, *not*
+    the instance-specific `message`. It carries no pool/dataset names and no free
+    text, which is exactly why the public panel can show it: TN3 coarsens each
+    public alert to `level` + `category` + time and omits the untrusted `message`
+    entirely (the raw text stays cached for the `sanitize()`d Discord path).
+    Empty for a provider whose alert has no class.
+    """
+
+    key: str
+    level: str
+    message: str
+    at: datetime | None = None
+    category: str = ""
+
+    def as_payload(self) -> dict:
+        return {
+            "key": self.key,
+            "level": self.level,
+            "message": self.message,
+            "at": self.at.isoformat() if self.at else None,
+            "category": self.category,
+        }
+
+
 @runtime_checkable
 class Provider(Protocol):
     """What enrichment is written against. Implementations live beside this."""
@@ -254,3 +302,18 @@ class Provider(Protocol):
         with nothing in it.
         """
         ...
+
+
+# --- The optional `report()` capability ------------------------------------
+#
+# A provider MAY additionally define `report(status=None) -> object | None`
+# returning a provider-specific payload dataclass (one carrying `as_payload()`)
+# for its own dashboard section — TrueNAS's pools/disks/system/alerts, for
+# instance. It is deliberately **not** a method on the `Provider` Protocol
+# above: `Provider` is `@runtime_checkable`, so listing `report` there would
+# make `isinstance(x, Provider)` demand it on every provider and break the
+# guest-only ones (a test pins `isinstance(ProxmoxProvider(), Provider)`). The
+# poll pass discovers it by reflection — `getattr(provider, "report", None)` —
+# exactly as it already treats `infrastructure()`, so a provider without one is
+# simply a provider with no custom section, and no existing implementation
+# changes.

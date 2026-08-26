@@ -604,7 +604,8 @@ def test_the_settings_screen_reports_a_blind_token_as_unusable(
     install(monkeypatch, provider, FakeCluster(privileges={}))
     poll_provider(provider)
 
-    (row,) = client.get("/api/v1/settings", **admin_headers).json()["providers"]
+    rows = client.get("/api/v1/settings", **admin_headers).json()["providers"]
+    row = next(r for r in rows if r["name"] == "proxmox")
     assert row["configured"] is True
     assert row["usable"] is False
     assert "PVEAuditor" in row["detail"]
@@ -618,7 +619,8 @@ def test_the_settings_screen_reports_ambiguous_addresses(
     install(monkeypatch, provider, FakeCluster())
     poll_provider(provider)
 
-    (row,) = client.get("/api/v1/settings", **admin_headers).json()["providers"]
+    rows = client.get("/api/v1/settings", **admin_headers).json()["providers"]
+    row = next(r for r in rows if r["name"] == "proxmox")
     assert row["guest_count"] == 6
     assert row["ambiguous_address_count"] == 1  # 172.17.0.1, on two guests
 
@@ -633,7 +635,8 @@ def test_the_settings_screen_reports_the_credentials_privileges(
     install(monkeypatch, provider, FakeCluster())
     poll_provider(provider)
 
-    (row,) = client.get("/api/v1/settings", **admin_headers).json()["providers"]
+    rows = client.get("/api/v1/settings", **admin_headers).json()["providers"]
+    row = next(r for r in rows if r["name"] == "proxmox")
 
     assert "VM.Audit" in row["privileges"]
     assert "VM.GuestAgent.Audit" in row["privileges"]
@@ -644,11 +647,36 @@ def test_a_configured_provider_that_has_never_polled_says_so(
 ):
     """The state a fresh deployment is in for up to one poll interval. Silence
     here reads as broken."""
-    (row,) = client.get("/api/v1/settings", **admin_headers).json()["providers"]
+    rows = client.get("/api/v1/settings", **admin_headers).json()["providers"]
+    row = next(r for r in rows if r["name"] == "proxmox")
     assert row["configured"] is True
     assert row["usable"] is False
     assert row["detail"] == "Waiting for the first poll."
     assert row["last_polled_at"] is None
+
+
+def test_a_partly_configured_provider_names_the_missing_variable(
+    client, admin_headers, settings
+):
+    """TN-WS added a third required TrueNAS var (`TRUENAS_API_USER` — 25.04 keys
+    are user-linked). A TN2-era deploy carries host+key and would otherwise read
+    a bare "Not configured." beside two plainly-set values; the row must name
+    the gap. Discovered via the provider's env-only `configuration_gaps()` by
+    reflection, so Proxmox rows are untouched."""
+    settings.TRUENAS_HOST = "https://truenas.test"
+    settings.TRUENAS_API_KEY = "key"
+    settings.TRUENAS_API_USER = ""
+
+    rows = client.get("/api/v1/settings", **admin_headers).json()["providers"]
+    row = next(r for r in rows if r["name"] == "truenas")
+    assert row["configured"] is False
+    assert "TRUENAS_API_USER" in row["detail"]
+    # Wholly unset stays the quiet choice, not a nag.
+    settings.TRUENAS_HOST = ""
+    settings.TRUENAS_API_KEY = ""
+    rows = client.get("/api/v1/settings", **admin_headers).json()["providers"]
+    row = next(r for r in rows if r["name"] == "truenas")
+    assert row["detail"] == "Not configured."
 
 
 def test_the_settings_screen_reports_why_the_cluster_read_failed(
@@ -669,7 +697,8 @@ def test_the_settings_screen_reports_why_the_cluster_read_failed(
     install(monkeypatch, provider, cluster)
     poll_provider(provider)
 
-    (row,) = client.get("/api/v1/settings", **admin_headers).json()["providers"]
+    rows = client.get("/api/v1/settings", **admin_headers).json()["providers"]
+    row = next(r for r in rows if r["name"] == "proxmox")
     assert row["usable"] is True  # the poll itself succeeded
     assert row["infrastructure_detail"]  # and the reason the panel is empty is HERE
     assert row["guest_count"] == 6  # locations kept working throughout
