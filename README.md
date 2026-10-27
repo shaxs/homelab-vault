@@ -55,6 +55,8 @@ Please review the configuration and security model before exposing an instance b
   
 - **Optional Proxmox enrichment** showing the node and guest associated with a service.
   
+- **Optional TrueNAS SCALE monitoring** with read-only pool, disk, backup, and alert panels, and TrueNAS's own critical alerts forwarded to Discord.
+  
 - **Static recovery export** that remains usable when the application is unavailable.
   
 - **Database backups and restore documentation** for operational recovery.
@@ -78,6 +80,8 @@ web         Django application and compiled SPA
 worker      HTTP health checks
 
 proxmox-worker  optional Proxmox location enrichment
+
+truenas-worker  optional TrueNAS storage and alert polling
 
 db          PostgreSQL
 ```
@@ -172,6 +176,10 @@ A new installation starts with an empty catalog. Add the first service from the 
 
 Proxmox integration is optional. With `PROXMOX_HOST` unset, the catalog still works normally without polling or location enrichment.
 
+TrueNAS integration is optional too. With `TRUENAS_HOST` unset, there is no TrueNAS section on the dashboard and nothing polls it. To enable it, set `TRUENAS_HOST`, `TRUENAS_API_USER`, and `TRUENAS_API_KEY` in `.env`, restart, then turn on **Settings → TrueNAS → TrueNAS polling** (off by default). Use a dedicated TrueNAS user in the built-in `truenas_readonly_administrators` group, and create the API key on that user. The [Settings guide](docs/SETTINGS_USER_GUIDE.md#truenas) walks through it.
+
+> TrueNAS 25.04+ **revokes** an API key it sees on a plain-HTTP connection. Homelab Vault always connects over TLS (`wss://`) whatever scheme `TRUENAS_HOST` carries; never test the key yourself over `http://`.
+
 To build the image from this checkout instead — for development, or on an architecture the published image does not cover (it is `linux/amd64`) — use `docker compose up -d --build`.
 
 ### Updating
@@ -234,10 +242,12 @@ The application includes several defensive controls:
   
 - Secrets remain in environment configuration and are not stored in catalog records.
   
+- Proxmox and TrueNAS integrations are read-only. TrueNAS disk serial numbers and full alert text are never published by the API.
+  
 
 ## Configuration
 
-Deployment configuration is supplied through environment variables. Runtime preferences such as the landing page, panel visibility, health thresholds, notifications, and Proxmox display settings are managed in the Settings screen.
+Deployment configuration is supplied through environment variables. Runtime preferences such as the landing page, panel visibility, health thresholds, notifications, and Proxmox and TrueNAS polling are managed in the Settings screen.
 
 The most important settings are:
 
@@ -252,6 +262,9 @@ The most important settings are:
 | `WEB_PORT` | Host port for the application. |
 | `PROXMOX_HOST` | Optional Proxmox API endpoint. |
 | `PROXMOX_API_TOKEN` | Optional read-only Proxmox token. |
+| `TRUENAS_HOST` | Optional TrueNAS SCALE address, with a scheme. Always contacted over TLS. |
+| `TRUENAS_API_USER` | TrueNAS user the API key belongs to (25.04+ keys are user-linked). |
+| `TRUENAS_API_KEY` | Optional read-only TrueNAS API key, created on that user. |
 | `PROBE_ALLOWED_NETWORKS` | CIDRs the probe and health checker may reach. |
 | `STATIC_EXPORT_DIR` | Host directory for the recovery HTML export. |
 | `HOMELABVAULT_DISCORD_WEBHOOK_URL` | Optional Discord notification webhook. |
@@ -267,7 +280,7 @@ The most important settings are:
 The backup is plain SQL. Restore it into an empty database with the application stopped:
 
 ```bash
-docker compose stop web worker proxmox-worker
+docker compose stop web worker proxmox-worker truenas-worker
 
 
 
@@ -282,7 +295,7 @@ gunzip -c backups/homelabvault-<timestamp>.sql.gz \
 
 
 
-docker compose start web worker proxmox-worker
+docker compose start web worker proxmox-worker truenas-worker
 ```
 
 A backup that has never been restored is an assumption, not a recovery plan. Test the restore procedure before relying on it.
@@ -323,6 +336,8 @@ In another terminal, workers can be started with:
 python manage.py health_worker
 
 python manage.py proxmox_worker  # optional
+
+python manage.py truenas_worker  # optional
 ```
 
 Build or run the frontend separately:
@@ -349,7 +364,7 @@ The backend test suite requires a reachable PostgreSQL server. There is no SQLit
 
 ## Project status
 
-Homelab Vault is actively developed for real homelab use. The core catalog, API, health workers, optional Proxmox enrichment, recovery export, and backup workflow are in place. Interfaces and integrations may continue to evolve as I need and as the project gains users.
+Homelab Vault is actively developed for real homelab use. The core catalog, API, health workers, optional Proxmox enrichment, optional TrueNAS monitoring, recovery export, and backup workflow are in place. Interfaces and integrations may continue to evolve as I need and as the project gains users.
 
 Issues, suggestions, and focused pull requests are welcome.
 
