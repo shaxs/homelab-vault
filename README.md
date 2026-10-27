@@ -49,6 +49,8 @@ Please review the configuration and security model before exposing an instance b
   
 - **Health-aware status** with configurable intervals, timeouts, and failure thresholds.
   
+- **Optional Discord alerts** when a service goes down or recovers, a worker stalls, a Proxmox poll keeps failing, or TrueNAS raises a critical alert. Alerts are damped against flapping and can ping a chosen Discord user or role.
+  
 - **API-first writes** for scripts, automation, and scoped infrastructure agents.
   
 - **Human-friendly web UI** for browsing and editing the catalog.
