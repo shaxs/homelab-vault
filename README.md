@@ -176,9 +176,9 @@ http://localhost:8000
 
 A new installation starts with an empty catalog. Add the first service from the web interface or through the API.
 
-Proxmox integration is optional. With `PROXMOX_HOST` unset, the catalog still works normally without polling or location enrichment.
+Proxmox integration is optional. With `PROXMOX_HOST` unset, the catalog still works normally without polling or location enrichment. The [Proxmox guide](docs/PROXMOX_USER_GUIDE.md) covers creating the read-only token.
 
-TrueNAS integration is optional too. With `TRUENAS_HOST` unset, there is no TrueNAS section on the dashboard and nothing polls it. To enable it, set `TRUENAS_HOST`, `TRUENAS_API_USER`, and `TRUENAS_API_KEY` in `.env`, restart, then turn on **Settings → TrueNAS → TrueNAS polling** (off by default). Use a dedicated TrueNAS user in the built-in `truenas_readonly_administrators` group, and create the API key on that user. The [Settings guide](docs/SETTINGS_USER_GUIDE.md#truenas) walks through it.
+TrueNAS integration is optional too. With `TRUENAS_HOST` unset, there is no TrueNAS section on the dashboard and nothing polls it. To enable it, set `TRUENAS_HOST`, `TRUENAS_API_USER`, and `TRUENAS_API_KEY` in `.env`, restart, then turn on **Settings → TrueNAS → TrueNAS polling** (off by default). Use a dedicated TrueNAS user in the built-in `truenas_readonly_administrators` group, and create the API key on that user. The [TrueNAS guide](docs/TRUENAS_USER_GUIDE.md) walks through it.
 
 > TrueNAS 25.04+ **revokes** an API key it sees on a plain-HTTP connection. Homelab Vault always connects over TLS (`wss://`) whatever scheme `TRUENAS_HOST` carries; never test the key yourself over `http://`.
 

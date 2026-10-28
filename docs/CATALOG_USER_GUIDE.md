@@ -1,6 +1,6 @@
 # Service Catalog User Guide
 
-**Last Updated**: 2026-08-10
+**Last Updated**: 2026-10-28
 
 ## What it is
 
@@ -272,8 +272,8 @@ Proxmox's, to judge.
 
 Two limits, stated on the form as well: containers running Docker resolve to
 their **host**, not to themselves, and VMs need the QEMU guest agent running to
-report an address. For why a service has no location at all, see the Proxmox
-section of the [Settings User Guide](SETTINGS_USER_GUIDE.md).
+report an address. For why a service has no location at all, see the
+[Proxmox User Guide](PROXMOX_USER_GUIDE.md#why-a-service-might-have-no-location).
 
 ## Icons
 
@@ -363,6 +363,8 @@ blank, and the sidebar says **Not refreshing — server unreachable**.
 ## Related
 
 - [Settings User Guide](SETTINGS_USER_GUIDE.md) — auth modes, global health
-  thresholds, Proxmox setup and location troubleshooting, catalog density
-- [Command Center User Guide](DASHBOARD_USER_GUIDE.md) — the dashboard's
-  status summary and Proxmox panels
+  thresholds, catalog density
+- [Proxmox User Guide](PROXMOX_USER_GUIDE.md) — setup, where derived
+  locations come from, and location troubleshooting
+- [Command Center User Guide](COMMAND_CENTER_USER_GUIDE.md) — the dashboard's
+  status summary and provider sections

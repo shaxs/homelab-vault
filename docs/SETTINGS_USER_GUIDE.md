@@ -1,6 +1,6 @@
 # Settings and Access User Guide
 
-**Last Updated**: 2026-08-12
+**Last Updated**: 2026-10-28
 
 ## Overview
 
@@ -94,7 +94,7 @@ control drops below its label — but behave identically.
 Catalog** or **Command Center**. Unlike Theme, this one is server-wide. Either
 way the catalog stays reachable at `/catalog`, so a bookmark to it keeps working
 whatever this is set to. See the
-[Command Center User Guide](DASHBOARD_USER_GUIDE.md).
+[Command Center User Guide](COMMAND_CENTER_USER_GUIDE.md).
 
 **Catalog density** — how large the catalog's rows are. **Compact** is the
 original dense table; **Comfortable** makes rows taller with bigger icons and
@@ -107,14 +107,17 @@ Which panels appear on the dashboard. Switching one off removes it from the page
 entirely — it is not merely hidden, so a panel you have switched off sends
 nothing to the browser.
 
-The two Proxmox panels are greyed out until Proxmox is configured — your
-preference is still remembered and comes back on its own once it is.
+There are two Proxmox panels (**Cluster Summary**, **Nodes**) and four TrueNAS
+panels (**System**, **Pools**, **Disks**, **Alerts**). The Proxmox ones are
+greyed out until Proxmox is configured — your preference is still remembered
+and comes back on its own once it is. The TrueNAS ones can be set at any time
+and take effect once TrueNAS is configured.
 
-> **The dashboard is readable without signing in**, like the catalog. That
-> includes node names, node addresses, Proxmox versions and storage totals. Deliberate, so the
-> dashboard is complete without a login; it assumes the app is reachable only
-> from your own network. Your VM and container names, and the reason a Proxmox
-> poll failed, stay on this screen instead.
+> **The dashboard is readable without signing in**, like the catalog.
+> Deliberate, so the dashboard is complete without a login; it assumes the app
+> is reachable only from your own network. What each provider shows publicly,
+> and what it keeps back, is in the [Proxmox](PROXMOX_USER_GUIDE.md#who-can-see-what)
+> and [TrueNAS](TRUENAS_USER_GUIDE.md#who-can-see-what) guides.
 
 ### Data and API
 
@@ -256,74 +259,14 @@ The whole card is greyed out until `PROXMOX_HOST` and `PROXMOX_API_TOKEN` are
 set in `.env` and the server is restarted. Until then the poller stays off and
 the Proxmox panels are hidden everywhere.
 
-#### Provider status
+Once polling is on, the card shows the **provider status** — what the last poll
+actually found, which privileges the token holds, and how many shared addresses
+were skipped when matching locations. If polling keeps failing, Discord hears
+about it after three failed polls in a row; this card is where the real reason
+lives.
 
-Once polling is on, the card shows what the last poll actually found:
-
-| It says | It means |
-|---|---|
-| **Working**, with a guest count | The cluster answered and the credential can see it |
-| **Working**, plus *"N shared addresses skipped"* | Normal. See below — this is usually the answer to "why did some services not get a location" |
-| **Not working**, *"Waiting for the first poll"* | Fresh start. Give it one poll interval |
-| **Not working**, with a reason | Read the reason; the common ones are covered in [Troubleshooting](#troubleshooting) |
-| **Token privileges: …** | What the credential could actually do on the last successful poll. `VM.Audit` and `VM.GuestAgent.Audit` are what locations need; `Sys.Audit` is what the dashboard's cluster panels need — if they say "unavailable" while locations work, look for it here |
-
-> **"Not working" with a guest count of zero is a state you should never see, and
-> that is deliberate.** Proxmox answers a request for guests your credential
-> cannot see with an empty list rather than an error — so a token with no
-> permissions looks exactly like an empty cluster. Homelab Vault checks the
-> credential's permissions directly instead of trusting the empty list, and tells
-> you which commands to run. Without that, the only symptom would be locations
-> that never appear.
-
-A **Cluster panel:** note appears here when the guest list works but the
-*cluster* read does not (typically a token without `Sys.Audit`). That is the
-reason the dashboard means when it says *"Cluster state is unavailable — see
-Settings for the reason"* — guest locations keep working; only the dashboard's
-cluster and node panels are affected.
-
-**If polling keeps failing, Discord hears about it** (when notifications are
-on): one message after **three consecutive failed polls**, one more when it
-recovers — never one per poll. The message deliberately does not carry the
-diagnostic; this card is where the real reason lives. A single failed poll is
-treated as a blip and announced to nobody. The worker itself keeps running
-through all of this, which is exactly why the worker-stall alert cannot cover a
-broken cluster — the worker is fine; the cluster is not.
-
-#### Why a service might have no location
-
-A service gets a location when its address matches **exactly one** guest.
-
-- **Containers running Docker resolve to their host.** If ten services run in
-  containers on one Proxmox container, all ten show *that container's* location.
-  That is genuinely where they are, and it is worth knowing that is what the
-  field means.
-- **An address held by more than one guest is skipped.** Every guest running
-  Docker reports `172.17.0.1`, so that address identifies none of them. Homelab
-  Vault would rather show nothing than show you a guess. The *"N shared addresses
-  skipped"* count on the card is how many it ignored.
-- **VMs need the QEMU guest agent** running to report an address. Containers do
-  not. Expect partial coverage if you run VMs without it.
-- **A service on hardware outside the cluster has no location and never will** —
-  a NAS, a Raspberry Pi, a desktop. That is not a fault.
-
-#### Location on a service: yours vs. Proxmox's
-
-The **Location** field on a service record is yours to type, and Proxmox's to
-derive. They never overwrite each other.
-
-- Leave it **empty** and it follows Proxmox. If the guest moves to another node,
-  the location follows it on the next poll — no action from you.
-- **Type a value** and it *pins*. Proxmox will never overwrite it.
-- If a pinned value later disagrees with what Proxmox reports, the record shows
-  both, with **Unpin and follow it**. That clears your typed value and lets the
-  location track again.
-
-> **There is no "accept" button, on purpose.** Accepting would copy Proxmox's
-> current answer into your pinned value — which pins it again, so the two
-> disagree again the next time the guest moves, and you accept forever. If you
-> want the value to track, unpin it. If you want it frozen, type it. Those are
-> the only two things anyone actually wants.
+Setting up the token, reading the status, and why a service might have no
+location are all in the [Proxmox User Guide](PROXMOX_USER_GUIDE.md).
 
 ### TrueNAS
 
@@ -332,39 +275,17 @@ Polling is **off by default**; turning it on takes effect on the TrueNAS worker'
 next cycle, with nothing to restart — the same shape as the Proxmox card, and a
 *separate* worker, so one provider being slow or down never affects the other.
 
-The card needs **three** values set in `.env` and the server restarted:
+Below the polling controls sit three `.env` values — **`TRUENAS_HOST`**,
+**`TRUENAS_API_USER`** and **`TRUENAS_API_KEY`** — each showing only whether it
+is set. If some are set and some are not, the provider row names the missing
+variable rather than a bare "Not configured".
 
-- **`TRUENAS_HOST`** — the box's address, with a scheme. Whatever scheme you
-  write, the app always talks to TrueNAS over TLS (`wss://`): TrueNAS
-  **revokes** any API key it sees on a plain-HTTP connection, so never test
-  your key with anything that isn't encrypted.
-- **`TRUENAS_API_USER`** — the TrueNAS username the key belongs to. On TrueNAS
-  25.04+ API keys are *linked to a user*, so the key alone no longer identifies
-  the account. The intended shape is a dedicated service account: create a user
-  (no shell access needed), add it to the built-in
-  `truenas_readonly_administrators` group so it holds the **Read-Only Admin**
-  role, and create the API key on that user.
-- **`TRUENAS_API_KEY`** — that user's API key. Like every credential it is
-  never shown here or returned by the API — the card reports only whether it
-  is set.
+> **TrueNAS revokes any API key it sees over plain HTTP.** The app always
+> connects over TLS, but never test the key by hand with anything unencrypted.
 
-If some of the three are set and some are not, the provider row below says
-exactly which variable is missing rather than a bare "Not configured" — the
-usual case being an older deployment that predates the username.
-
-**Why this exists: TrueNAS watches your storage, and Homelab Vault watches that it
-did.** The reason for the feature is a disk that degraded for months unnoticed
-because nobody was looking at TrueNAS often enough. So once polling is on,
-TrueNAS's own critical and high alerts — a failing disk, a degraded pool — are
-**forwarded to Discord** (when notifications are on), once as each appears and
-once when it clears, on the same edge-triggered rules as every other alert here.
-A worker on the foot of the sidebar reports the TrueNAS poller's own health, next
-to the health and Proxmox workers.
-
-> **The pools, disks and alerts themselves get their own dashboard section in a
-> later step.** This step wires the polling, the worker and the Discord
-> forwarding; the on-screen panels for capacity, SMART and the alert feed arrive
-> with the dashboard's adapter bar.
+Creating the read-only service account, what the provider row's statuses mean,
+and which TrueNAS alerts are forwarded to Discord are all in the
+[TrueNAS User Guide](TRUENAS_USER_GUIDE.md).
 
 ### Access
 
@@ -442,17 +363,9 @@ point of rotating it.
 | The auth chip is amber, not purple | You are in `open-writes` or `open` | If that was not intended, set `HOMELABVAULT_AUTH_MODE=full` in `.env` and restart |
 | I was signed out with no warning | The admin token was rotated and the server restarted | Enter the new token |
 | A setting saved, but nothing changed | Every setting on this screen takes effect on the relevant worker's **next cycle** — nothing needs restarting | Wait one interval. Health settings follow the health interval, Proxmox settings the Proxmox interval |
-| Provider status says **Not working**, *"authenticates but holds no privileges"* | The API token is real but was never granted a role. With privilege separation, a token's rights are the **intersection** of the user's and the token's, so granting only one leaves it blind | Run **both** lines the message gives you — one `--users`, one `--tokens` — then `pveum user token permissions <user> <token>` to confirm |
-| Provider status says **Not working**, *"must include the scheme"* | `PROXMOX_HOST` is missing `https://`. The Proxmox API is HTTPS on port 8006 | Set `PROXMOX_HOST=https://your-node:8006` and restart |
-| Provider status says **Not working**, a 401 | `PROXMOX_API_TOKEN` is only the secret UUID. Proxmox identifies a token by `USER@REALM!TOKENID` and authenticates it with the UUID, so the UUID alone cannot be matched to a token | Use the complete `PVEAPIToken=USER@REALM!TOKENID=UUID` string, then restart |
-| Services on one host all show the same location | Working as intended — containers running Docker resolve to their **host** | Nothing to fix. Type a Location on a service if you want it to say something else |
-| A service that should match has no location | Its address is shared by more than one guest, or it is a VM without the QEMU guest agent, or it is not on the cluster at all | Check the *"N shared addresses skipped"* count on the Proxmox card first — that is the usual cause |
-| A location is stuck on an old node after moving a guest | Somebody typed into the Location field, which **pins** it | Open the service record; if it shows a disagreement, click **Unpin and follow it** |
-| A location shows a small **stale** tag | Proxmox has not reported that guest for several polls — usually it was deleted, or the whole poll is failing | If the guest is really gone, nothing to do: the link drops on its own after enough polls and the location empties. If the guest exists, check this card's status |
-| The server log warns about `PROXMOX_VERIFY_TLS` | Expected on a default Proxmox install, which uses a self-signed certificate. The warning exists because the API token crosses that connection | Either accept it on a trusted network, or give the cluster a certificate your machine trusts and set `PROXMOX_VERIFY_TLS=True` |
 | Discord is on but nothing arrives | `HOMELABVAULT_DISCORD_WEBHOOK_URL` is unset, or does not start `https://`, or the server was not restarted after setting it | Check the Notifications card says **Configured**, then check the server log — it names the variable when the value is wrong |
 | A service went down and said nothing | Either its own **Notify on status changes** is off, or it had not failed the fail threshold yet | Check the switch on the service record; the count resets on any success |
 | Discord announced a stall right after a restart | The worker had not beaten yet when the check ran | It clears itself on the next cycle. If it does not, the worker is not running |
 | I configured a mention and nobody was pinged | The ID is wrong, or a user ID was pasted into the role field (or vice versa) | Copy the ID again with Developer Mode; users go in **Mention user ID**, roles in **Mention role ID** |
 | A service named `@everyone` did not ping everyone | Working as intended — text can never cause a ping; only the configured IDs can | Nothing to fix |
-| Proxmox broke and Discord said nothing | Fewer than 3 polls have failed so far, or notifications are off, or the host was *unset* rather than broken — "not configured" is a configuration state and never alerts | Wait out 3 poll intervals; check the Notifications toggle and this card's status |
+| The Proxmox or TrueNAS card says **Not working**, or a location looks wrong | A provider problem rather than a Settings one | See Troubleshooting in the [Proxmox](PROXMOX_USER_GUIDE.md#troubleshooting) or [TrueNAS](TRUENAS_USER_GUIDE.md#troubleshooting) guide |

@@ -1,6 +1,6 @@
 # Command Center User Guide
 
-**Last Updated**: 2026-08-11
+**Last Updated**: 2026-10-28
 
 ## What it is
 
@@ -11,6 +11,14 @@ Service Catalog is unchanged and still lives at `/catalog`.
 The dashboard is organised as an **adapter bar**: a row of pills under the
 header that switches between an **Overview** and one section per infrastructure
 provider you have configured — **Proxmox** and **TrueNAS**.
+
+This guide covers the screen itself. Setting up a provider, and what its
+section's numbers mean, are in that provider's own guide:
+[Proxmox](PROXMOX_USER_GUIDE.md) and [TrueNAS](TRUENAS_USER_GUIDE.md).
+
+<!-- SCREENSHOT PLACEHOLDER: docs/images/dashboard.png — recapture: dark theme,
+     desktop, /dashboard Overview with the adapter bar. The current file predates
+     the adapter bar (it is also the README hero image). -->
 
 ## Choosing what loads first
 
@@ -61,85 +69,29 @@ configured.
 ## Who can see it
 
 **The dashboard is readable by anyone who can reach the app**, the same as the
-catalog. That includes Proxmox node names, node addresses, versions and CPU, RAM
-and storage totals, and TrueNAS pool names, disk models, capacity, system
-figures and the *type* of any active alert — for hardware that is not itself in
+catalog — including infrastructure figures for hardware that is not itself in
 the catalog. This was a deliberate choice so the dashboard is complete without
 signing in; it assumes the app is reachable only from your own network. Do not
 expose Homelab Vault beyond it.
 
-Some things stay behind the admin token even so:
+Some things stay off the public page even so — your VM and container names, the
+reason a poll failed, TrueNAS disk serial numbers and the full text of TrueNAS
+alerts. Each provider guide lists exactly what is shown and what is not:
+[Proxmox](PROXMOX_USER_GUIDE.md#who-can-see-what),
+[TrueNAS](TRUENAS_USER_GUIDE.md#who-can-see-what).
 
-- The names and addresses of your VMs and containers.
-- The *reason* a poll failed, which can name an environment variable.
-- **TrueNAS disk serial numbers**, which are never shown at all.
-- **The full text of a TrueNAS alert.** The dashboard shows an alert's severity
-  and short *type* (its category), not the message — a pool or dataset name in
-  the raw text is kept off a public page. The full detail is one click away in
-  the TrueNAS UI itself.
+## The provider sections
 
-Those first two appear on the Settings screen instead.
+- **Proxmox** (`/dashboard/proxmox`) — a cluster summary (health, compute,
+  storage) and a table of nodes. What each value means, including the ones that
+  are easy to misread, is in the
+  [Proxmox User Guide](PROXMOX_USER_GUIDE.md#what-you-see-on-the-command-center).
+- **TrueNAS** (`/dashboard/truenas`) — pool health, system and capacity cards,
+  then tabs for pools, disks, backups and alerts. See the
+  [TrueNAS User Guide](TRUENAS_USER_GUIDE.md#what-you-see-on-the-command-center).
 
-## The Proxmox section
-
-At `/dashboard/proxmox` when Proxmox is configured. **Settings → Panels**
-switches each panel on or off; switching one off removes it from the page.
-
-- **Proxmox Cluster Summary** — three cards: Cluster health (Healthy / Degraded /
-  No quorum, plus Quorum and HA), Compute (online nodes, CPU %, RAM %) and
-  Storage (online storages, total capacity, used, VM and LXC counts).
-- **Proxmox Nodes** — one row per node: Node, Status, Uptime, CPU, RAM, Load avg,
-  Storage, Version.
-
-### What the values mean
-
-- **HA: Not configured** means Proxmox reported no high-availability services.
-  **Unknown** means the API token could not read HA status — it needs the
-  `Sys.Audit` privilege. That is different from HA being off.
-- **The Version column is per node, on purpose.** A cluster part-way through an
-  upgrade shows different versions on different rows.
-- **A node's Storage column counts only that node's local storage.** Storage
-  shared across nodes — an NFS mount, for example — is counted once in the
-  cluster Storage card instead, not once per node.
-- **Cluster total capacity counts each storage once.** If one NAS pool is
-  exported as several separate storages, each reports the whole pool's size, so
-  the total can read high. Proxmox's own datacenter summary behaves the same way.
-- **Cluster CPU % is weighted by core count**, so a small busy node does not drag
-  the whole figure up.
-- **"polled Ns ago"** on the Compute card is when the Proxmox worker last
-  succeeded.
-- **A "Not refreshing" badge** on the Nodes panel means the cached data is older
-  than three poll intervals — usually the Proxmox worker has stopped.
-
-## The TrueNAS section
-
-At `/dashboard/truenas` when TrueNAS is configured. The header shows the box's
-hostname and a health pill.
-
-Three summary cards:
-
-1. **Pool health** — Online or Degraded, the count of healthy pools, and any
-   running scrub or resilver with its progress.
-2. **System** — load average, RAM (total, and used where TrueNAS reports it),
-   uptime and version.
-3. **Capacity** — used and total across all pools, with a line per pool.
-
-Below the cards, a tabbed table:
-
-- **Pools** — name, status, capacity, used %, and scrub state.
-- **Disks** — name, model, type, owning pool, SMART status (green for PASS, red
-  for FAIL) and temperature. **Serial numbers are deliberately not shown.**
-- **Backups** — replication and cloud-sync tasks: name, kind, last state
-  (green for finished, red for failed) and when it last ran.
-- **Alerts** — the box's own active alerts, each a severity pill (amber for
-  warnings, red for errors and above) plus a short **category** — the alert
-  *type*, like "Smart Error" or "Zpool Capacity Notice" — and when it was raised.
-  **The full alert text is not shown here**; open TrueNAS for the detail (see
-  *Who can see it* above).
-
-Each of the four TrueNAS panels (System, Pools, Disks, Alerts) can be switched
-off in **Settings → Panels**. Clicking any row opens the details panel on the
-right.
+**Settings → Panels** switches individual panels off — two for Proxmox, four for
+TrueNAS. A panel switched off is removed from the page, not just hidden.
 
 ## Clicking a row
 
@@ -190,7 +142,14 @@ stopped moving.
 | A "Not refreshing — server unreachable" badge in the header | The browser cannot reach Homelab Vault itself; the page keeps the last data it loaded rather than going blank. |
 | A node row, or TrueNAS row, with dashes in some columns | That item did not answer one of its reads. The rest of the row is still accurate. |
 
+Provider-specific problems — a token that sees nothing, SMART reading unknown,
+an alert that did not reach Discord — are in the
+[Proxmox](PROXMOX_USER_GUIDE.md#troubleshooting) and
+[TrueNAS](TRUENAS_USER_GUIDE.md#troubleshooting) guides.
+
 ## Related
 
+- [Proxmox User Guide](PROXMOX_USER_GUIDE.md)
+- [TrueNAS User Guide](TRUENAS_USER_GUIDE.md)
 - [Settings User Guide](SETTINGS_USER_GUIDE.md)
 - [Service Catalog User Guide](CATALOG_USER_GUIDE.md)
