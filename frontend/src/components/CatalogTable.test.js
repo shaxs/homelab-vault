@@ -225,3 +225,66 @@ describe('recheck failures (audit S11)', () => {
     wrapper.unmount()
   })
 })
+
+describe('launching vs editing (2026-10-28)', () => {
+  // The icon and name used to open the record; operators kept clicking them
+  // expecting the service. They launch now, and the record moved to Edit.
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('launches the service when the icon or name is clicked', () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const wrapper = table()
+    wrapper.find('.svc').trigger('click')
+    expect(open).toHaveBeenCalledWith('https://jellyfin.lab.local', '_blank', 'noopener')
+    expect(wrapper.emitted('open')).toBeUndefined()
+    expect(wrapper.emitted('edit')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('opens the editor instead when the URL cannot be launched', () => {
+    // `launch()` ignores a URL `safeUrl` rejects, so a launch here would be a
+    // click that does nothing. The URL is the thing to fix, so go there.
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const broken = { ...SERVICE, launch_url: 'javascript:alert(1)' }
+    const wrapper = table([broken])
+    wrapper.find('.svc').trigger('click')
+    expect(open).not.toHaveBeenCalled()
+    expect(wrapper.emitted('edit')).toEqual([[broken]])
+    wrapper.unmount()
+  })
+
+  it('opens the editor from the Edit button, without launching', () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const wrapper = table()
+    wrapper.find('.launch .edit-btn').trigger('click')
+    expect(wrapper.emitted('edit')).toEqual([[SERVICE]])
+    expect(wrapper.emitted('open')).toBeUndefined()
+    expect(open).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('puts Edit before Open in the launch cell', () => {
+    const labels = table().findAll('.launch button').map((b) => b.text())
+    expect(labels).toEqual(['Edit', 'Open ↗'])
+  })
+
+  it('still launches from Open', () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const wrapper = table()
+    wrapper.find('.launch-btn').trigger('click')
+    expect(open).toHaveBeenCalledWith('https://jellyfin.lab.local', '_blank', 'noopener')
+    expect(wrapper.emitted('edit')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('still opens the record to view from the Location cell', () => {
+    // Only the icon and name changed meaning; the rest of the row did not.
+    const wrapper = table()
+    wrapper.find('.host').trigger('click')
+    expect(wrapper.emitted('open')).toEqual([[SERVICE]])
+    expect(wrapper.emitted('edit')).toBeUndefined()
+    wrapper.unmount()
+  })
+})

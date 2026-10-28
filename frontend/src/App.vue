@@ -269,7 +269,16 @@ onUnmounted(() => {
   clearTimeout(bannerTimer)
 })
 
-function openRecord(service) {
+/** Whether the record should open already editing (the catalog's Edit). Cleared
+ *  whenever the record screen is left, so Back/Forward onto a record — which
+ *  does not go through here — always lands on the plain view. */
+const editOnOpen = ref(false)
+watch(screen, (name) => {
+  if (name !== 'record') editOnOpen.value = false
+})
+
+function openRecord(service, { edit = false } = {}) {
+  editOnOpen.value = edit
   navigate('record', { slug: service.slug })
 }
 
@@ -629,6 +638,7 @@ async function onGateAuthenticated() {
       <ServiceRecord
         v-else-if="screen === 'record' && current"
         :service="current"
+        :start-editing="editOnOpen"
         @back="goCatalog"
         @changed="showBanner('Saved.')"
       />
@@ -806,6 +816,7 @@ async function onGateAuthenticated() {
           :rows="rows"
           :total="state.services.length"
           @open="openRecord"
+          @edit="(service) => openRecord(service, { edit: true })"
           @append-term="addTerm"
           @select-term="selectOne"
         />

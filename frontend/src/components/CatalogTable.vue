@@ -11,9 +11,17 @@
  * Service-supplied text (name, category, host_label, tags) is rendered with
  * {{ }} only. It can originate from a probed page title, i.e. from a third
  * party — never render it with v-html.
+ *
+ * Clicking the icon or name LAUNCHES the service (2026-10-28, operator
+ * request): it is where the eye and the cursor land, and it used to open the
+ * record, so the common action took a detour. The record moved to the **Edit**
+ * button beside Open, which opens it straight into edit mode. A service whose
+ * URL cannot be launched opens in edit mode instead of doing nothing — the
+ * URL is the thing to fix. The Location cell still opens the record to view.
  */
 import { computed, ref } from 'vue'
 
+import { safeUrl } from '../format.js'
 import { launch, recheckHealth, state } from '../store.js'
 import StatusPill from './StatusPill.vue'
 
@@ -48,7 +56,14 @@ const props = defineProps({
   rows: { type: Array, required: true },
   total: { type: Number, required: true },
 })
-const emit = defineEmits(['open', 'append-term', 'select-term'])
+const emit = defineEmits(['open', 'edit', 'append-term', 'select-term'])
+
+/** `launch()` silently ignores a URL `safeUrl` rejects; here that would be a
+ *  click that does nothing, so send the operator to fix it instead. */
+function launchOrEdit(service, event) {
+  if (safeUrl(service.launch_url)) launch(service, event.metaKey || event.ctrlKey)
+  else emit('edit', service)
+}
 
 function toggle(slug) {
   if (state.selected.has(slug)) state.selected.delete(slug)
@@ -84,7 +99,11 @@ function initials(name) {
         {{ state.selected.has(service.slug) ? '✓' : '' }}
       </button>
 
-      <div class="svc" @click="emit('open', service)">
+      <div
+        class="svc"
+        :title="safeUrl(service.launch_url) ? `Open ${service.name}` : 'No launchable URL — edit it'"
+        @click="launchOrEdit(service, $event)"
+      >
         <span class="svc-icon">
           <img v-if="service.icon_url" :src="service.icon_url" alt="" />
           <template v-else>{{ initials(service.name) }}</template>
@@ -153,6 +172,7 @@ function initials(name) {
       </div>
 
       <div class="launch">
+        <button class="edit-btn" @click.stop="emit('edit', service)">Edit</button>
         <button
           class="launch-btn"
           @click.stop="launch(service, $event.metaKey || $event.ctrlKey)"

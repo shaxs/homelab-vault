@@ -357,3 +357,32 @@ describe('the category field offers the same suggestions as the add form', () =>
     wrapper.unmount()
   })
 })
+
+describe('opening straight into edit (the catalog Edit button)', () => {
+  const buttons = (wrapper) => wrapper.findAll('button').map((b) => b.text())
+
+  it('starts in the editor when asked to', () => {
+    const wrapper = mount(ServiceRecord, {
+      props: { service: record(), startEditing: true },
+    })
+    // The header's Edit/Delete/Open show in both modes; the editor card is
+    // what swaps in, and Save is the button only it has.
+    expect(buttons(wrapper)).toContain('Save')
+    wrapper.unmount()
+  })
+
+  it('starts on the plain view by default', () => {
+    const wrapper = mount(ServiceRecord, { props: { service: record() } })
+    expect(buttons(wrapper)).not.toContain('Save')
+    wrapper.unmount()
+  })
+
+  it('returns to the view on Cancel rather than staying in edit', async () => {
+    const wrapper = mount(ServiceRecord, {
+      props: { service: record(), startEditing: true },
+    })
+    await wrapper.findAll('button').find((b) => b.text() === 'Cancel').trigger('click')
+    expect(buttons(wrapper)).not.toContain('Save')
+    wrapper.unmount()
+  })
+})

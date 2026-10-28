@@ -88,8 +88,10 @@ Columns: checkbox · **Service** · **Category** · **Status** · **Location** �
 
 Most cells do something:
 
-- **Service** — click the name or icon to open its record. A service with no
-  icon shows two-letter initials instead.
+- **Service** — click the name or icon to **launch the service**, exactly as
+  **Open ↗** does. If its launch URL is not one the app will open (anything
+  other than `http`/`https`), the click opens the service's edit form instead,
+  so you can fix it. A service with no icon shows two-letter initials instead.
 - **Category** — a chip that filters by that category. Category clicks are
   single-select: clicking a second one replaces the first, and clicking the
   active one clears it.
@@ -98,8 +100,10 @@ Most cells do something:
   switched off.
 - **Location** — your typed value if you set one, otherwise the
   Proxmox-derived one, otherwise a dash. A small amber **stale** tag can appear
-  on a derived value — see [Location](#location-yours-vs-proxmoxs).
+  on a derived value — see [Location](#location-yours-vs-proxmoxs). Clicking it
+  opens the service's record.
 - **Tags** — each tag adds a `tag:` filter, and tag filters accumulate.
+- **Edit** — opens the service's record with the edit form already open.
 - **Open ↗** — launches the service, always in a new tab. Ctrl/⌘-click does
   the same.
 
@@ -116,12 +120,13 @@ closes when you tap anything that navigates, tap outside it, or open a dialog.
 
 On a phone the table becomes a stack of cards. Each card shows the service's
 icon, name and status pill on the first line, category and location beneath,
-tags beneath that, and a full-width **Open ↗** button. Same data, nothing lost
-— and on a tablet the full seven-column table remains.
+tags beneath that, and a bottom strip with **Edit** and a wide **Open ↗**
+button. Same data, nothing lost — and on a tablet the full seven-column table
+remains.
 
 Everything clickable on desktop is tappable on the card: the status pill still
 re-checks the service, the category chip and tags still filter, the name still
-opens the record. Row checkboxes and the bulk bar work as they do on desktop.
+launches the service and **Edit** still opens its edit form. Row checkboxes and the bulk bar work as they do on desktop.
 
 Three phone-specific things to know:
 
@@ -219,7 +224,9 @@ problem rows stay for another pass.
 ## Editing and deleting a service
 
 Every service has its own page at `/services/<slug>` — a real URL you can
-bookmark. From there:
+bookmark. **Edit** on a catalog row opens it with the form already open;
+clicking the row's Location, or **↵** in the ⌘K palette, opens it to view.
+From there:
 
 - **Edit** opens the full form: name, category, launch and health URLs,
   location, tags, description, icon, and the health fields below. There is no

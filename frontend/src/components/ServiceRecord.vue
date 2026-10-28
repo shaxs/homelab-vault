@@ -19,7 +19,12 @@ import IconPicker from './IconPicker.vue'
 import StatusPill from './StatusPill.vue'
 import TagInput from './TagInput.vue'
 
-const props = defineProps({ service: { type: Object, required: true } })
+const props = defineProps({
+  service: { type: Object, required: true },
+  // Arrive already editing — the catalog's Edit button. Read once on mount,
+  // so Save/Cancel return to the normal view rather than re-entering edit.
+  startEditing: { type: Boolean, default: false },
+})
 const emit = defineEmits(['back', 'changed'])
 
 const editing = ref(false)
@@ -162,6 +167,8 @@ async function remove() {
 function initials(name) {
   return (name || '?').replace(/[^A-Za-z0-9 ]/g, '').slice(0, 2).toUpperCase()
 }
+
+if (props.startEditing) startEdit()
 </script>
 
 <template>

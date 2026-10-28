@@ -130,11 +130,41 @@ describe('a cold load of a deep link', () => {
 })
 
 describe('navigation', () => {
-  it('puts the service record in the URL when a row is opened', async () => {
+  // The icon/name launches the service as of 2026-10-28 (CatalogTable.test.js
+  // covers that); the record is reached from Edit or the Location cell.
+  const hasEditor = (wrapper) => wrapper.findAll('button').some((b) => b.text() === 'Save')
+
+  it('puts the service record in the URL when Edit is clicked, already editing', async () => {
     const wrapper = await openAt('/catalog')
-    await wrapper.find('.svc').trigger('click')
+    await wrapper.find('.launch .edit-btn').trigger('click')
     await wrapper.vm.$nextTick()
     expect(window.location.pathname).toBe('/services/jellyfin')
+    expect(hasEditor(wrapper)).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('opens the record to view, not edit, from the Location cell', async () => {
+    const wrapper = await openAt('/catalog')
+    await wrapper.find('.host').trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(window.location.pathname).toBe('/services/jellyfin')
+    expect(hasEditor(wrapper)).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('does not reopen the editor when Back/Forward returns to a record', async () => {
+    // Edit's "start editing" is a one-shot for that click. History navigation
+    // does not go through openRecord, so the flag must not outlive the visit.
+    const wrapper = await openAt('/catalog')
+    await wrapper.find('.launch .edit-btn').trigger('click')
+    await wrapper.vm.$nextTick()
+    window.history.pushState({}, '', '/catalog')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    await wrapper.vm.$nextTick()
+    window.history.pushState({}, '', '/services/jellyfin')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    await wrapper.vm.$nextTick()
+    expect(hasEditor(wrapper)).toBe(false)
     wrapper.unmount()
   })
 })
